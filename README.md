@@ -11,6 +11,16 @@ Two static web apps, both installable as offline PWAs:
 - **`qrreader/`** — scan a card with the camera and read the recovered text.
   Scanned texts are kept in an on-device library.
 
+## Demo
+
+Try the hosted version:
+
+- **Creator:** <https://apps.keithbphillips.com/qrbookmark-vfkm8biz72q4qe78/>
+- **Reader:** <https://apps.keithbphillips.com/qrreader-17a85b49/>
+
+Open both on a phone and add them to the home screen to use them offline.
+Cards made with the hosted creator link back to the hosted reader.
+
 ## How it works
 
 - **The text is on the card, not on a server.** The creator compresses the
