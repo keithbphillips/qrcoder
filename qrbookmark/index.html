@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QR Bookmark — create a card</title>
+<meta name="description" content="Encode a text excerpt into four QR panels on a printable bookmark. Any three recover the whole text. Works offline.">
+<meta name="theme-color" content="#E8E6DE">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="QR Bookmark">
+<link rel="stylesheet" href="./fonts.css">
+<style>
+:root{--stock:#E8E6DE;--stock2:#DFDCD2;--ink:#17181C;--hair:#C3C0B6;--slug:#6E6C64;
+ --ok:#046b34;--bad:#a3120f;--cy:#00c2e0;
+ /* Light tints for the gauge fill specifically — the dark --ok/--bad above
+    stay as-is for status-box text/borders on a light background, where they
+    read fine, but as a FILL color behind dark text (.gauge span sits on top
+    of it) they were too dark for the text to stay legible. */
+ --ok-light:#a8dbb8;--bad-light:#f0b3ab}
+*{box-sizing:border-box}
+body{margin:0;background:var(--stock);color:var(--ink);
+ font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.5;
+ -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+.sheet{max-width:1180px;margin:0 auto;padding:20px 18px 60px}
+header{border-bottom:2px solid var(--ink);padding-bottom:10px}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.18em;
+ text-transform:uppercase;color:var(--slug)}
+h1{font-family:"Oswald",sans-serif;font-weight:500;letter-spacing:.03em;text-transform:uppercase;
+ font-size:clamp(28px,7vw,50px);line-height:.95;margin:6px 0 2px}
+h1 span{font-weight:300;color:var(--slug)}
+.dek{max-width:66ch;margin:8px 0 0;font-size:14.5px;color:#2c2d33}
+.wrap{display:grid;grid-template-columns:auto 1fr;gap:28px;margin-top:24px;align-items:start}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+.stage{background:var(--stock2);padding:20px;border:1px solid var(--hair);overflow:auto}
+.stagecap{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.16em;
+ text-transform:uppercase;color:var(--slug);margin-bottom:12px;display:flex;
+ justify-content:space-between;gap:12px}
+.bookmark{width:2.60in;height:9.30in;overflow:hidden;background:#fff;border:1px dashed var(--hair);padding:.16in;
+ display:flex;flex-direction:column;gap:.05in}
+.bm-head{border-bottom:1.5px solid var(--ink);padding-bottom:.05in}
+.bm-title{font-family:"Oswald",sans-serif;font-weight:500;text-transform:uppercase;
+ font-size:.15in;line-height:1.05;margin:0}
+.bm-by{font-family:"IBM Plex Mono",monospace;font-size:.072in;letter-spacing:.09em;
+ text-transform:uppercase;color:var(--slug);margin-top:.02in}
+.bm-inst{font-family:"IBM Plex Mono",monospace;font-size:.062in;line-height:1.45;
+ color:#3a3b40;margin:.04in 0 0}
+.pan{position:relative;align-self:center;width:1.985in;height:1.985in;background:#fff}
+.pan canvas{display:block;width:100%;height:100%;image-rendering:pixelated}
+.pan .tag{position:absolute;left:0;bottom:-.10in;font-family:"IBM Plex Mono",monospace;
+ font-size:.062in;letter-spacing:.09em;color:var(--slug)}
+.bm-foot{border-top:1px solid var(--hair);padding-top:.05in;margin-top:.06in;
+ font-family:"IBM Plex Mono",monospace;font-size:.058in;letter-spacing:.04em;color:var(--slug)}
+.bm-foot b{display:block;color:var(--ink);font-weight:600;font-size:.066in;
+ letter-spacing:.06em;margin-bottom:.015in}
+label{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.16em;
+ text-transform:uppercase;color:var(--slug);margin-bottom:5px}
+textarea,input,select{width:100%;font-family:"IBM Plex Mono",monospace;font-size:12px;
+ background:#f7f6f1;border:1px solid var(--hair);padding:8px;color:var(--ink)}
+textarea{resize:vertical}
+textarea:focus,input:focus,select:focus,button:focus-visible{outline:2px solid var(--cy);outline-offset:1px}
+.metagrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+@media(max-width:520px){.metagrid{grid-template-columns:1fr}}
+.gauge{margin-top:14px;position:relative;height:26px;border:1px solid var(--ink);
+ background:#f7f6f1;overflow:hidden}
+.gauge i{display:block;height:100%;transition:width .2s}
+.gauge span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+ font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.06em;font-weight:600}
+.status{margin-top:14px;border:1px solid var(--hair);background:#f7f6f1;padding:10px 11px;
+ font-family:"IBM Plex Mono",monospace;font-size:12px;font-weight:600}
+.status.pass{border-color:var(--ok);color:var(--ok)}
+.status.failed{border-color:var(--bad);color:var(--bad)}
+.btnrow{display:flex;gap:9px;margin-top:16px;flex-wrap:wrap}
+.btn{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;
+ text-transform:uppercase;padding:10px 14px;background:var(--ink);color:var(--stock);
+ border:1px solid var(--ink);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn:disabled{opacity:.35}
+table{width:100%;border-collapse:collapse;font-family:"IBM Plex Mono",monospace;
+ font-size:11.5px;margin-top:24px}
+th{text-align:left;font-weight:500;letter-spacing:.14em;font-size:9.5px;text-transform:uppercase;
+ color:var(--slug);padding:0 8px 7px 0;border-bottom:1px solid var(--hair)}
+td{padding:6px 8px 6px 0;border-bottom:1px solid rgba(195,192,182,.5)}
+td:first-child{color:var(--slug)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+footer{margin-top:28px;padding-top:14px;border-top:1px solid var(--hair);
+ font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--slug);line-height:1.75}
+footer b{color:var(--ink)}
+
+/* ---------- save ---------- */
+#save{position:fixed;inset:0;z-index:70;background:rgba(20,20,15,.96);display:none;
+ flex-direction:column;padding:calc(12px + env(safe-area-inset-top)) 12px
+ calc(12px + env(safe-area-inset-bottom))}
+#save.on{display:flex}
+#saveimg{flex:1 1 auto;min-height:0;object-fit:contain;background:#fff;align-self:center;
+ max-width:100%;border:1px solid #4a4a3c}
+#savehint{font-family:"IBM Plex Mono",monospace;font-size:11.5px;line-height:1.55;
+ color:#d8d6c6;padding:10px 2px;text-align:center}
+#savehint em{color:#ffd479;font-style:normal}
+#savefoot{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+#savefoot .btn{background:#E8E6DE;color:#17181C;border-color:#E8E6DE}
+#savefoot .btn.ghost{background:transparent;color:#E8E6DE;border-color:#5a5a4c}
+
+@media print{
+ body{background:#fff}.sheet{padding:0;max-width:none}
+ header,.side,.stagecap,footer,table,#save{display:none!important}
+ .stage{background:none;border:0;padding:0}
+ .bookmark{border:1px dashed #999;margin:.3in;page-break-inside:avoid}
+ @page{size:letter portrait;margin:.3in}}
+</style>
+</head>
+<body>
+<div class="sheet">
+ <header>
+  <div class="eyebrow">Four QR panels · any three recover the text · works offline</div>
+  <h1>QR Bookmark <span>/ 3-of-4</span></h1>
+  <p class="dek">The excerpt is compressed, split across three QR panels, and a fourth carries
+   an XOR parity of the other three. Lose any single panel to a tear, a coffee ring or a
+   thumb, and the remaining three still rebuild the whole text. Black and white, so it prints
+   on any printer — and every phone already knows how to read it.</p>
+ </header>
+
+ <div class="wrap">
+  <div class="stage">
+   <div class="stagecap"><span id="cap1">Card 2.60 × 9.30 in</span><span id="cap2">v15 · 77 modules · 0.66 mm</span></div>
+   <div class="bookmark" id="mark">
+    <div class="bm-head">
+     <h2 class="bm-title" id="btitle">The Time Machine</h2>
+     <div class="bm-by" id="bby">H. G. Wells · opening excerpt</div>
+     <p class="bm-inst">Scan with the QR Bookmark Reader app, or tap a panel's link
+      with any camera — no app needed. Any three panels rebuild the text.</p>
+    </div>
+    <div class="pan" id="p0"><canvas width="255" height="255"></canvas><span class="tag">01 / 04</span></div>
+    <div class="pan" id="p1"><canvas width="255" height="255"></canvas><span class="tag">02 / 04</span></div>
+    <div class="pan" id="p2"><canvas width="255" height="255"></canvas><span class="tag">03 / 04</span></div>
+    <div class="pan" id="p3"><canvas width="255" height="255"></canvas><span class="tag">04 / 04 · parity</span></div>
+    <div class="bm-foot"><b id="furl">example.com/time-machine</b><span id="fmeta">QB/3-of-4 · v15 · 342 w · ISBN 978-0-000-00000-0</span></div>
+   </div>
+  </div>
+
+  <div class="side">
+   <div class="metagrid">
+    <div><label for="mt">Title</label><input id="mt" type="text"></div>
+    <div><label for="ma">Author</label><input id="ma" type="text"></div>
+    <div><label for="mi">ISBN</label><input id="mi" type="text"></div>
+    <div><label for="mu">Fallback URL</label><input id="mu" type="text"></div>
+   </div>
+   <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+    <label for="txt" style="margin-bottom:0">Excerpt</label>
+    <button class="btn ghost" id="loadtxtbtn" type="button"
+     style="padding:3px 9px;margin-bottom:5px">Load .txt file…</button>
+   </div>
+   <input type="file" id="txtfile" accept=".txt,text/plain" style="display:none">
+   <textarea id="txt" rows="9"></textarea>
+   <div class="gauge" id="gauge"><i style="width: 16.1216%; background: var(--ok-light);"></i><span>1124 B / 6972 B · 342 words · 16%</span></div>
+   <div class="status pass" id="stat">READY · 4 panels · 375 B each · any 3 rebuild the text</div>
+
+   <div class="btnrow">
+    <a class="btn" href="../qrreader/" target="_blank" rel="noopener"
+     style="text-decoration:none">Open reader app</a>
+    <button class="btn" id="savebtn">Save to Photos</button>
+    <button class="btn" id="pdfbtn">Download PDF (exact size)</button>
+    <button class="btn ghost" id="printbtn">Print from browser</button>
+    <button class="btn ghost" id="selftest">Self-test</button>
+    <a class="btn ghost" href="./calibrate.html" style="text-decoration:none">Print calibration</a>
+   </div>
+
+   <table><thead><tr><th>Spec</th><th style="text-align:right">Value</th></tr></thead>
+    <tbody id="spec"><tr><td>Card</td><td class="num">2.60 × 9.30 in</td></tr><tr><td>Panels</td><td class="num">4 × 2.2 in square</td></tr><tr><td>QR version</td><td class="num">v15 (77 modules)</td></tr><tr><td>Error correction</td><td class="num">L · 7%</td></tr><tr><td>Module size</td><td class="num">0.66 mm</td></tr><tr><td>Payload / panel</td><td class="num">375 B</td></tr><tr><td>Capacity</td><td class="num">6972 B</td></tr><tr><td>Compressed</td><td class="num">1124 B</td></tr><tr><td>Words</td><td class="num">342</td></tr><tr><td>Recovery</td><td class="num">any 3 of 4 panels</td></tr></tbody></table>
+  </div>
+ </div>
+
+ <footer>
+  <b>Why four panels and not one.</b> A single QR code caps at 2,331 bytes of error-corrected
+  byte data, and filling the card width with one symbol would put the modules at 0.32 mm —
+  smaller than most printers hold cleanly. Four stacked panels keep the modules large enough
+  to survive paper and a phone camera, and the parity panel buys tear tolerance on top of
+  each symbol's own error correction.<br>
+  <b>Reading a card.</b> Scan with the companion <a href="../qrreader/"
+  target="_blank" rel="noopener" style="color:inherit">QR Bookmark Reader</a> app, which crops and
+  reads all four panels automatically — or tap any panel's link with a phone's stock camera and no
+  app at all; opening three of the four assembles the text the same way.
+ </footer>
+</div>
+
+<div id="save">
+ <img id="saveimg" alt="Bookmark ready to save">
+ <div id="savehint"></div>
+ <div id="savefoot">
+   <button class="btn" id="savedl">Download PNG</button>
+   <button class="btn ghost" id="saveclose">Close</button>
+ </div>
+</div>
+
+<script src="./qrcode.js"></script>
+<script src="./jsqr.js"></script>
+<script src="./zxing.js"></script>
+<script src="./codec.js"></script>
+<script>
+"use strict";
+const QRC=window.QRCodeLib;
+// codec.js defaults PANEL_URL to this page's own location; panels need to
+// open the reader app instead, since that's what actually decodes them. The
+// reader is served as a sibling folder, so resolve it against wherever this
+// page is hosted rather than hardcoding a domain.
+PANEL_URL=new URL('../qrreader/',location.href).href+'#';
+
+/* ---------- capacity: measured against the real encoder, not a table ----------
+   Panels used to be pure byte mode, so comparing a payload's character count
+   against a fixed per-version byte-capacity table was exact. Now that wrap()
+   mixes byte mode (the URL prefix) with alphanumeric mode (the base32 shard
+   after it — see wrap()'s comment), the two runs cost different bits per
+   character, so a lookup table can no longer say what fits. Ask the encoder
+   itself instead, at whatever version is in question, and trust that. Also
+   switched ECC level M (15%) -> L (7%): less resilience to in-panel print
+   damage, but real capacity headroom, which is the point of this pass. */
+const MAXVER=40, ECC='L', PANEL_IN=2.20;
+function fitsAt(payload,version,level){
+  try{ QRC.create(payload,{version,errorCorrectionLevel:level}); return true; }
+  catch(e){ return false; }
+}
+function maxShardAtVersion(version){
+  let lo=0,hi=4000;
+  while(lo<hi){
+    const mid=(lo+hi+1)>>1;
+    // worst-case idx/total/cardId digit widths, so the measured max never overshoots
+    if(fitsAt(wrap(3,new Uint8Array(mid),mid,999999,0xffffffff),version,ECC)) lo=mid; else hi=mid-1;
+  }
+  return lo;
+}
+const MAXSHARD=maxShardAtVersion(MAXVER);
+const BUDGET=MAXSHARD*3;    // usable payload across three shards
+// Smallest version that fits `payload` at the current ECC level — binary
+// search against the real encoder rather than a table, for the same reason.
+function pickVersion(payload){
+  if(!fitsAt(payload,MAXVER,ECC)) return null;
+  let lo=1,hi=MAXVER;
+  while(lo<hi){ const mid=(lo+hi)>>1; if(fitsAt(payload,mid,ECC)) hi=mid; else lo=mid+1; }
+  return lo;
+}
+
+function drawMatrix(cv,m,cell){
+  const n=m.size, q=4, px=(n+q*2)*cell;
+  cv.width=px; cv.height=px;
+  const g=cv.getContext('2d');
+  g.fillStyle='#fff'; g.fillRect(0,0,px,px);
+  g.fillStyle='#000';
+  for(let r=0;r<n;r++)for(let c=0;c<n;c++)
+    if(m.data[r*n+c]) g.fillRect((c+q)*cell,(r+q)*cell,cell,cell);
+}
+
+let MATS=[null,null,null,null], VER=0, PER=0, TOTAL=0;
+
+function container(){
+  return JSON.stringify({v:1,t:$('mt').value,a:$('ma').value,i:$('mi').value,
+                         u:$('mu').value,x:$('txt').value});
+}
+
+async function build(){
+  const comp=await deflate(container());
+  TOTAL=comp.length;
+  const words=$('txt').value.trim().split(/\s+/).filter(Boolean).length;
+  const frac=comp.length/BUDGET;
+  const bar=$('gauge').querySelector('i');
+  bar.style.width=Math.min(100,frac*100)+'%';
+  // Red only for what's actually over capacity — matches the comp.length>BUDGET
+  // check below exactly, rather than a cautionary "getting close" guess.
+  bar.style.background= frac>1?'var(--bad-light)':'var(--ok-light)';
+  $('gauge').querySelector('span').textContent=
+    `${comp.length} B / ${BUDGET} B · ${words} words · ${(frac*100).toFixed(0)}%`;
+  $('btitle').textContent=$('mt').value||'—';
+  $('bby').textContent=($('ma').value||'')+' · opening excerpt';
+  $('furl').textContent=$('mu').value||'—';
+
+  if(comp.length>BUDGET){
+    $('stat').className='status failed';
+    $('stat').textContent='OVER CAPACITY — TRIM THE EXCERPT';
+    return;
+  }
+  const {shards,per}=shardify(comp), cardId=crc32(comp); PER=per;
+  const payloads=[0,1,2,3].map(i=>wrap(i,shards[i],per,TOTAL,cardId));
+  // One version for all four so they print identically. Pick it from
+  // whichever payload is longest — pickVersion asks the real encoder rather
+  // than a table, since byte mode (URL prefix) and alphanumeric mode (the
+  // base32 shard after it) cost different bits per character.
+  const longestPayload=payloads.reduce((a,b)=>b.length>a.length?b:a);
+  const ver=pickVersion(longestPayload);
+  if(ver===null){
+    $('stat').className='status failed';
+    $('stat').textContent='OVER CAPACITY — TRIM THE EXCERPT'; return;
+  }
+  VER=ver;
+  try{
+    for(let i=0;i<4;i++){
+      // pass the string, so the symbol carries readable text a phone camera
+      // will actually surface instead of an opaque binary blob
+      const qr=QRC.create(payloads[i],{version:ver,errorCorrectionLevel:ECC});
+      MATS[i]=qr.modules;
+      drawMatrix($('p'+i).querySelector('canvas'), qr.modules, 3);
+    }
+  }catch(e){
+    $('stat').className='status failed';
+    $('stat').textContent='ENCODE FAILED — '+e.message; return;
+  }
+  const mods=MATS[0].size, mm=PANEL_IN*25.4/(mods+8);
+  // There used to be a print-quality warning tier below some mm cutoff, on
+  // the theory a phone camera couldn't resolve modules that small. Real
+  // prints have since scanned reliably all the way down to 0.30mm — v40,
+  // this scheme's absolute ceiling — so there's no size this app can
+  // actually produce that's been shown to fail. The only real failure
+  // states are OVER CAPACITY and ENCODE FAILED above, which stop before
+  // this point and never reach here.
+  $('cap2').textContent=`v${ver} · ${mods} modules · ${mm.toFixed(2)} mm`;
+  $('fmeta').textContent=`QB/3-of-4 · v${ver} · ${words} w · ISBN ${$('mi').value||'—'}`;
+  $('stat').style.borderColor=''; $('stat').style.color='';
+  $('stat').className='status pass';
+  $('stat').textContent=`READY · v${ver} · ${mm.toFixed(2)} mm modules · any 3 of 4 rebuild the text`;
+  $('spec').innerHTML=[
+    ['Card','2.60 × 9.30 in'],['Panels','4 × '+PANEL_IN+' in square'],
+    ['QR version','v'+ver+' ('+mods+' modules)'],['Error correction','L · 7%'],
+    ['Module size',mm.toFixed(2)+' mm'],
+    ['Payload / panel',per+' B'],['Capacity',BUDGET+' B'],
+    ['Compressed',comp.length+' B'],['Words',String(words)],
+    ['Recovery','any 3 of 4 panels']
+  ].map(r=>`<tr><td>${r[0]}</td><td class="num">${r[1]}</td></tr>`).join('');
+}
+
+/* ================= export the card ================= */
+(function(){
+  const box=$('save'), img=$('saveimg'), hint=$('savehint');
+  if(!box) return;
+  let url=null;
+  const DPI=400, IN=v=>Math.round(v*DPI);
+
+  function render(){
+    const W=IN(2.60), H=IN(9.30), pad=IN(0.16), innerW=W-pad*2;
+    const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
+    const g=cv.getContext('2d');
+    g.fillStyle='#fff'; g.fillRect(0,0,W,H);
+    let y=pad;
+    g.fillStyle='#17181C';
+    const ts=IN(0.13); g.font=`500 ${ts}px Oswald, sans-serif`;
+    const title=($('mt').value||'Untitled').toUpperCase();
+    const lines=[]; let cur='';
+    for(const w of title.split(/\s+/)){const t=cur?cur+' '+w:w;
+      if(g.measureText(t).width>innerW&&cur){lines.push(cur);cur=w;}else cur=t;}
+    if(cur)lines.push(cur);
+    for(const ln of lines.slice(0,2)){y+=ts;g.fillText(ln,pad,y);y+=IN(0.01);}
+    g.fillStyle='#6E6C64'; g.font=`400 ${IN(0.06)}px "IBM Plex Mono", monospace`;
+    y+=IN(0.06); g.fillText((($('ma').value||'')+' · opening excerpt').toUpperCase(),pad,y);
+    y+=IN(0.045);
+    g.strokeStyle='#17181C'; g.lineWidth=Math.max(1,IN(0.012));
+    g.beginPath();g.moveTo(pad,y);g.lineTo(W-pad,y);g.stroke();
+    y+=IN(0.04);
+    g.fillStyle='#3a3b40'; g.font=`400 ${IN(0.052)}px "IBM Plex Mono", monospace`;
+    for(const ln of ['Scan the panels one at a time with any QR reader.','Any three of the four rebuild the text.']){
+      y+=IN(0.058); g.fillText(ln,pad,y);
+    }
+    y+=IN(0.04);
+    const footH=IN(0.20), gap=IN(0.04);
+    const avail=H-pad-footH-y-gap*3;
+    const pSize=Math.min(innerW, Math.floor(avail/4)-IN(0.07));
+    const px=Math.round((W-pSize)/2);
+    for(let i=0;i<4;i++){
+      const m=MATS[i];
+      if(m){
+        const q=4, n=m.size, cell=Math.max(1,Math.floor(pSize/(n+q*2)));
+        const t=document.createElement('canvas'); t.width=t.height=(n+q*2)*cell;
+        const tg=t.getContext('2d');
+        tg.fillStyle='#fff'; tg.fillRect(0,0,t.width,t.height);
+        tg.fillStyle='#000';
+        for(let r=0;r<n;r++)for(let c=0;c<n;c++)
+          if(m.data[r*n+c]) tg.fillRect((c+q)*cell,(r+q)*cell,cell,cell);
+        g.imageSmoothingEnabled=false;
+        g.drawImage(t,px,y,pSize,pSize);
+      }
+      y+=pSize+IN(0.016);
+      g.fillStyle='#6E6C64'; g.font=`400 ${IN(0.052)}px "IBM Plex Mono", monospace`;
+      g.fillText(`0${i+1} / 04${i===3?' · PARITY':''}`,px,y+IN(0.046));
+      y+=IN(0.046)+gap;
+    }
+    const fy=H-pad-IN(0.09);
+    g.strokeStyle='#C3C0B6'; g.lineWidth=1;
+    g.beginPath();g.moveTo(pad,fy-IN(0.06));g.lineTo(W-pad,fy-IN(0.06));g.stroke();
+    g.fillStyle='#17181C'; g.font=`600 ${IN(0.055)}px "IBM Plex Mono", monospace`;
+    g.fillText(($('mu').value||'').toUpperCase(),pad,fy);
+    g.fillStyle='#6E6C64'; g.font=`400 ${IN(0.048)}px "IBM Plex Mono", monospace`;
+    const words=$('txt').value.trim().split(/\s+/).filter(Boolean).length;
+    g.fillText(`QB/3-of-4 · v${VER} · ${words} W`,pad,fy+IN(0.058));
+    return cv;
+  }
+
+  $('savebtn').addEventListener('click',async()=>{
+    if(!MATS[0]){alert('Nothing encoded yet.');return;}
+    box.classList.add('on'); hint.textContent='Rendering at '+DPI+' DPI…';
+    img.removeAttribute('src');
+    try{ if(document.fonts&&document.fonts.ready) await document.fonts.ready; }catch(e){}
+    await new Promise(r=>setTimeout(r,30));
+    render().toBlob(blob=>{
+      if(!blob){hint.textContent='The browser refused to encode the image.';return;}
+      if(url)URL.revokeObjectURL(url);
+      url=URL.createObjectURL(blob); img.src=url;
+      const file=new File([blob],'bookmark.png',{type:'image/png'});
+      const can=navigator.canShare&&navigator.canShare({files:[file]})&&navigator.share;
+      const old=$('sharebtn'); if(old)old.remove();
+      if(can){
+        hint.innerHTML='Tap <em>Save to Photos</em>, then choose <em>Save Image</em>.';
+        const b=document.createElement('button');
+        b.className='btn'; b.id='sharebtn'; b.textContent='Save to Photos';
+        $('savefoot').insertBefore(b,$('savefoot').firstChild);
+        b.addEventListener('click',async()=>{
+          try{await navigator.share({files:[file],title:'Bookmark'});}
+          catch(e){if(e.name!=='AbortError')hint.textContent='Share failed: '+e.message;}
+        });
+      }else{
+        hint.innerHTML='<em>Press and hold</em> the image, then <em>Add to Photos</em> — or download it.';
+      }
+    },'image/png');
+  });
+  $('saveclose').addEventListener('click',()=>{box.classList.remove('on');});
+  $('savedl').addEventListener('click',()=>{
+    if(!url)return;
+    const a=document.createElement('a'); a.href=url;
+    a.download=(($('mt').value||'bookmark').replace(/[^a-z0-9]+/gi,'-').toLowerCase())+'.png';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+})();
+
+/* ================= exact-size bookmark PDF =================
+   The CSS preview draws 2.20 in panels, which makes the card about 10.07 in
+   tall and spills onto a second sheet. A PDF carries its own geometry: the
+   card is placed at exactly 2.60 x 9.30 in on a Letter sheet with a cut
+   outline, and the QR cells are vector rectangles so they stay razor sharp. */
+function pdfEsc(t){return String(t).replace(/([\\()])/g,'\\$1');}
+function bookmarkPDF(){
+  const PT=72, PW=8.5*PT, PH=11*PT;
+  const CW=2.60*PT, CH=9.30*PT, pad=0.16*PT, innerW=CW-pad*2;
+  const ox=(PW-CW)/2, oy=(PH-CH)/2;          // card origin, PDF y is bottom-up
+  const T=v=>v*PT;
+  // mirror the raster export's layout so panel size matches everywhere
+  let y=pad;
+  y+=T(0.13)+T(0.01); y+=T(0.06); y+=T(0.045); y+=T(0.04);
+  y+=T(0.058)*2; y+=T(0.04);
+  const footH=T(0.20), gap=T(0.04);
+  const avail=CH-pad-footH-y-gap*3;
+  const pSize=Math.min(innerW, avail/4-T(0.07));
+  const px=ox+(CW-pSize)/2;
+
+  const toY=v=>oy+CH-v;                       // top-down offset -> PDF y
+  let s='';
+  // cut outline
+  s+='0.75 0.75 0.72 RG 0.5 w\n'+
+     `${ox.toFixed(2)} ${oy.toFixed(2)} ${CW.toFixed(2)} ${CH.toFixed(2)} re S\n`;
+  s+='0 0 0 rg\n';
+  let cy=pad;
+  cy+=T(0.13);
+  s+=`BT /F2 ${T(0.13).toFixed(1)} Tf 1 0 0 1 ${(ox+pad).toFixed(2)} ${toY(cy).toFixed(2)} Tm (`+
+     pdfEsc(($('mt').value||'Untitled').toUpperCase())+') Tj ET\n';
+  cy+=T(0.01)+T(0.06);
+  s+='0.42 0.42 0.39 rg\n';
+  s+=`BT /F1 ${T(0.058).toFixed(1)} Tf 1 0 0 1 ${(ox+pad).toFixed(2)} ${toY(cy).toFixed(2)} Tm (`+
+     pdfEsc((($('ma').value||'')+' · opening excerpt').toUpperCase())+') Tj ET\n';
+  cy+=T(0.045);
+  s+=`0 0 0 RG 1 w ${(ox+pad).toFixed(2)} ${toY(cy).toFixed(2)} m ${(ox+CW-pad).toFixed(2)} ${toY(cy).toFixed(2)} l S\n`;
+  cy+=T(0.04);
+  s+='0.23 0.23 0.25 rg\n';
+  for(const ln of ['Scan the panels with any QR reader.','Any three of the four are enough.']){
+    cy+=T(0.058);
+    s+=`BT /F1 ${T(0.05).toFixed(1)} Tf 1 0 0 1 ${(ox+pad).toFixed(2)} ${toY(cy).toFixed(2)} Tm (`+pdfEsc(ln)+') Tj ET\n';
+  }
+  cy+=T(0.04);
+  s+='0 0 0 rg\n';
+  for(let i=0;i<4;i++){
+    const m=MATS[i]; if(!m) continue;
+    const n=m.size, q=4, unit=pSize/(n+q*2);
+    const top=cy, bottom=top+pSize;
+    for(let r=0;r<n;r++){
+      let run=0;
+      for(let c=0;c<=n;c++){
+        const dark=c<n && m.data[r*n+c];
+        if(dark){run++;continue;}
+        if(run){
+          const rx=px+(c-run+q)*unit;
+          const ry=toY(top+(r+q+1)*unit);
+          // bleed each cell a hair: abutting fills can leave a hairline
+          // seam, which reads as a white grid across the symbol
+          const bl=unit*0.01;
+          s+=`${(rx-bl).toFixed(3)} ${(ry-bl).toFixed(3)} ${(unit*run+bl*2).toFixed(3)} ${(unit+bl*2).toFixed(3)} re\n`;
+          run=0;
+        }
+      }
+    }
+    s+='f\n';
+    cy=bottom+T(0.016)+T(0.046);
+    s+='0.42 0.42 0.39 rg\n';
+    s+=`BT /F1 ${T(0.05).toFixed(1)} Tf 1 0 0 1 ${px.toFixed(2)} ${toY(cy).toFixed(2)} Tm (`+
+       pdfEsc(`0${i+1} / 04${i===3?' · PARITY':''}`)+') Tj ET\n0 0 0 rg\n';
+    cy+=gap;
+  }
+  const fy=CH-pad-T(0.09);
+  s+=`0.78 0.78 0.75 RG 0.5 w ${(ox+pad).toFixed(2)} ${toY(fy-T(0.06)).toFixed(2)} m `+
+     `${(ox+CW-pad).toFixed(2)} ${toY(fy-T(0.06)).toFixed(2)} l S\n0 0 0 rg\n`;
+  s+=`BT /F2 ${T(0.055).toFixed(1)} Tf 1 0 0 1 ${(ox+pad).toFixed(2)} ${toY(fy).toFixed(2)} Tm (`+
+     pdfEsc(($('mu').value||'').toUpperCase())+') Tj ET\n';
+  const words=$('txt').value.trim().split(/\s+/).filter(Boolean).length;
+  s+='0.42 0.42 0.39 rg\n';
+  s+=`BT /F1 ${T(0.048).toFixed(1)} Tf 1 0 0 1 ${(ox+pad).toFixed(2)} ${toY(fy+T(0.058)).toFixed(2)} Tm (`+
+     pdfEsc(`QB/3-of-4 · v${VER} · ${words} W · ${(pSize/PT*25.4/(MATS[0].size+8)).toFixed(3)}mm modules`)+') Tj ET\n';
+
+  let out='%PDF-1.4\n'; const off=[0];
+  const push=(id,body)=>{off[id]=out.length; out+=`${id} 0 obj\n${body}\nendobj\n`;};
+  push(1,'<</Type/Catalog/Pages 2 0 R>>');
+  push(2,'<</Type/Pages/Kids[3 0 R]/Count 1>>');
+  push(3,`<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${PW} ${PH}]/Contents 4 0 R`+
+         '/Resources<</Font<</F1 5 0 R/F2 6 0 R>>>>>>');
+  push(4,`<</Length ${s.length}>>\nstream\n${s}endstream`);
+  push(5,'<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>');
+  push(6,'<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold/Encoding/WinAnsiEncoding>>');
+  const xref=out.length;
+  out+='xref\n0 7\n0000000000 65535 f \n';
+  for(let i=1;i<7;i++) out+=String(off[i]).padStart(10,'0')+' 00000 n \n';
+  out+=`trailer\n<</Size 7/Root 1 0 R>>\nstartxref\n${xref}\n%%EOF\n`;
+  return out;
+}
+
+/* ================= self-test: encode -> decode, in the browser ================= */
+$('selftest').addEventListener('click',async()=>{
+  const st=$('stat');
+  st.className='status'; st.textContent='Self-test running…';
+  try{
+    const comp=await deflate(container());
+    const {shards,per}=shardify(comp), cardId=crc32(comp);
+    const payloads=[0,1,2,3].map(i=>wrap(i,shards[i],per,comp.length,cardId));
+    // Share build()'s own version-selection logic instead of re-deriving it —
+    // a duplicated, drifted copy of this is exactly what broke the self-test
+    // before (it sized versions off a stale binary-header estimate).
+    const ver=pickVersion(payloads.reduce((a,b)=>b.length>a.length?b:a));
+    if(ver===null) throw new Error('excerpt exceeds max QR capacity even at v40');
+    const got=[null,null,null,null], panelCanvases=[];
+    for(let i=0;i<4;i++){
+      const qr=QRC.create(payloads[i],{version:ver,errorCorrectionLevel:ECC});
+      const m=qr.modules, q=4, cell=4, side=(m.size+q*2)*cell;
+      const c=document.createElement('canvas'); c.width=c.height=side;
+      const g=c.getContext('2d',{willReadFrequently:true});
+      g.fillStyle='#fff';g.fillRect(0,0,side,side);g.fillStyle='#000';
+      for(let r=0;r<m.size;r++)for(let cc=0;cc<m.size;cc++)
+        if(m.data[r*m.size+cc]) g.fillRect((cc+q)*cell,(r+q)*cell,cell,cell);
+      panelCanvases.push(c);
+      // exercise the real scanner path (ZXing when it loaded, jsQR if it did not)
+      const codes=await decodeAll(g.getImageData(0,0,side,side));
+      if(!codes.length) throw new Error(`panel ${i+1} did not decode (${ZXREADY?'zxing':'jsqr'})`);
+      const u=unwrap(codes[0]);
+      if(!u) throw new Error('panel '+(i+1)+' header wrong');
+      got[u.idx]=u.shard;
+    }
+    // drop each panel in turn and rebuild
+    for(let drop=0;drop<4;drop++){
+      const sub=got.map((s,i)=>i===drop?null:s);
+      const merged=reassemble(sub,per,comp.length);
+      if(!merged) throw new Error('reassembly failed without panel '+(drop+1));
+      const o=JSON.parse(await inflate(merged));
+      if(o.x!==$('txt').value) throw new Error('text mismatch without panel '+(drop+1));
+    }
+    // ZXing's reason for existing over jsQR: reading several panels in one frame
+    // (see the note above decodeAll). Composite all four into one image, the way
+    // a phone photo of the whole card would present them, and confirm that still
+    // works — only when ZXing is actually the active engine, since jsQR cannot
+    // do this by design and falling back to it there is expected, not a failure.
+    let comboNote='';
+    if(ZXREADY){
+      const side=Math.max(...panelCanvases.map(c=>c.width)), gap=Math.round(side*0.08);
+      const combo=document.createElement('canvas');
+      combo.width=side*2+gap; combo.height=side*2+gap;
+      const cg=combo.getContext('2d',{willReadFrequently:true});
+      cg.fillStyle='#fff'; cg.fillRect(0,0,combo.width,combo.height);
+      const pos=[[0,0],[side+gap,0],[0,side+gap],[side+gap,side+gap]];
+      panelCanvases.forEach((c,i)=>cg.drawImage(c,pos[i][0],pos[i][1]));
+      const comboCodes=await decodeAll(cg.getImageData(0,0,combo.width,combo.height));
+      if(comboCodes.length<4)
+        throw new Error(`multi-panel frame: zxing found only ${comboCodes.length}/4 panels at once`);
+      comboNote=' · 4/4 panels read from one frame (zxing)';
+    }
+    st.className='status pass';
+    st.textContent=`SELF-TEST PASSED · 4 panels encoded, decoded (${ZXREADY?'zxing':'jsqr'}), `+
+      `and rebuilt from every 3${comboNote}`;
+  }catch(e){
+    st.className='status failed';
+    st.textContent='SELF-TEST FAILED · '+e.message;
+  }
+});
+
+/* ---------- defaults + wiring ---------- */
+$('mt').value='The Time Machine';
+$('ma').value='H. G. Wells';
+$('mi').value='978-0-000-00000-0';
+$('mu').value='example.com/time-machine';
+$('txt').value=`The Time Traveller (for so it will be convenient to speak of him) was expounding a recondite matter to us. His grey eyes shone and twinkled, and his usually pale face was flushed and animated. The fire burnt brightly, and the soft radiance of the incandescent lights in the lilies of silver caught the bubbles that flashed and passed in our glasses. Our chairs, being his patents, embraced and caressed us rather than submitted to be sat upon, and there was that luxurious after-dinner atmosphere, when thought runs gracefully free of the trammels of precision. And he put it to us in this way—marking the points with a lean forefinger—as we sat and lazily admired his earnestness over this new paradox (as we thought it) and his fecundity.
+
+“You must follow me carefully. I shall have to controvert one or two ideas that are almost universally accepted. The geometry, for instance, they taught you at school is founded on a misconception.”
+
+“Is not that rather a large thing to expect us to begin upon?” said Filby, an argumentative person with red hair.
+
+“I do not mean to ask you to accept anything without reasonable ground for it. You will soon admit as much as I need from you. You know of course that a mathematical line, a line of thickness _nil_, has no real existence. They taught you that? Neither has a mathematical plane. These things are mere abstractions.”
+
+“That is all right,” said the Psychologist.
+
+“Nor, having only length, breadth, and thickness, can a cube have a real existence.”
+
+“There I object,” said Filby. “Of course a solid body may exist. All real things—”
+
+“So most people think. But wait a moment. Can an _instantaneous_ cube exist?”
+
+“Don’t follow you,” said Filby.
+
+“Can a cube that does not last for any time at all, have a real existence?”
+
+Filby became pensive. “Clearly,” the Time Traveller proceeded, “any real body must have extension in _four_ directions: it must have Length, Breadth, Thickness, and—Duration. But through a natural infirmity of the flesh, which I will explain to you in a moment, we incline to overlook this fact. There are really four dimensions, three which we call the three planes of Space, and a fourth, Time. There is, however, a tendency to draw an unreal distinction between the former three dimensions and the latter, because it happens that our consciousness moves intermittently in one direction along the latter from the beginning to the end of our lives.”
+
+“That,” said a very young man, making spasmodic efforts to relight his cigar over the lamp; “that . . . very clear indeed.”
+
+“Now, it is very remarkable that this is so extensively overlooked,” continued the Time Traveller, with a slight accession of cheerfulness. “Really this is what is meant by the Fourth Dimension, though some people who talk about the Fourth Dimension do not know they mean it. It is only another way of looking at Time. _There is no difference between Time and any of the three dimensions of Space except that our consciousness moves along it_. But some foolish people have got hold of the wrong side of that idea. You have all heard what they have to say about this Fourth Dimension?”
+
+“_I_ have not,” said the Provincial Mayor.
+
+“It is simply this. That Space, as our mathematicians have it, is spoken of as having three dimensions, which one may call Length, Breadth, and Thickness, and is always definable by reference to three planes, each at right angles to the others. But some philosophical people have been asking why _three_ dimensions particularly—why not another direction at right angles to the other three?—and have even tried to construct a Four-Dimensional geometry. Professor Simon Newcomb was expounding this to the New York Mathematical Society only a month or so ago. You know how on a flat surface, which has only two dimensions, we can represent a figure of a three-dimensional solid, and similarly they think that by models of three dimensions they could represent one of four—if they could master the perspective of the thing. See?”
+
+“I think so,” murmured the Provincial Mayor; and, knitting his brows, he lapsed into an introspective state, his lips moving as one who repeats mystic words. “Yes, I think I see it now,” he said after some time, brightening in a quite transitory manner.
+
+“Well, I do not mind telling you I have been at work upon this geometry of Four Dimensions for some time. Some of my results are curious. For instance, here is a portrait of a man at eight years old, another at fifteen, another at seventeen, another at twenty-three, and so on. All these are evidently sections, as it were, Three-Dimensional representations of his Four-Dimensioned being, which is a fixed and unalterable thing.”
+
+“Scientific people,” proceeded the Time Traveller, after the pause required for the proper assimilation of this, “know very well that Time is only a kind of Space. Here is a popular scientific diagram, a weather record. This line I trace with my finger shows the movement of the barometer. Yesterday it was so high, yesterday night it fell, then this morning it rose again, and so gently upward to here. Surely the mercury did not trace this line in any of the dimensions of Space generally recognised? But certainly it traced such a line, and that line, therefore, we must conclude, was along the Time-Dimension.”
+
+“But,” said the Medical Man, staring hard at a coal in the fire, “if Time is really only a fourth dimension of Space, why is it, and why has it always been, regarded as something different? And why cannot we move about in Time as we move about in the other dimensions of Space?”
+
+The Time Traveller smiled. “Are you so sure we can move freely in Space? Right and left we can go, backward and forward freely enough, and men always have done so. I admit we move freely in two dimensions. But how about up and down? Gravitation limits us there.”
+
+“Not exactly,” said the Medical Man. “There are balloons.”
+
+“But before the balloons, save for spasmodic jumping and the inequalities of the surface, man had no freedom of vertical movement.”
+
+“Still they could move a little up and down,” said the Medical Man.
+
+“Easier, far easier down than up.”
+
+“And you cannot move at all in Time, you cannot get away from the present moment.”
+
+“My dear sir, that is just where you are wrong. That is just where the whole world has gone wrong. We are always getting away from the present moment. Our mental existences, which are immaterial and have no dimensions, are passing along the Time-Dimension with a uniform velocity from the cradle to the grave. Just as we should travel _down_ if we began our existence fifty miles above the earth’s surface.”
+
+“But the great difficulty is this,” interrupted the Psychologist. “You _can_ move about in all directions of Space, but you cannot move about in Time.”
+
+“That is the germ of my great discovery. But you are wrong to say that we cannot move about in Time. For instance, if I am recalling an incident very vividly I go back to the instant of its occurrence: I become absent-minded, as you say. I jump back for a moment. Of course we have no means of staying back for any length of Time, any more than a savage or an animal has of staying six feet above the ground. But a civilised man is better off than the savage in this respect. He can go up against gravitation in a balloon, and why should he not hope that ultimately he may be able to stop or accelerate his drift along the Time-Dimension, or even turn about and travel the other way?”
+
+“Oh, _this_,” began Filby, “is all—”
+
+“Why not?” said the Time Traveller.
+
+“It’s against reason,” said Filby.
+
+“What reason?” said the Time Traveller.
+
+“You can show black is white by argument,” said Filby, “but you will never convince me.”
+
+“Possibly not,” said the Time Traveller. “But now you begin to see the object of my investigations into the geometry of Four Dimensions. Long ago I had a vague inkling of a machine—”
+
+“To travel through Time!” exclaimed the Very Young Man.
+
+“That shall travel indifferently in any direction of Space and Time, as the driver determines.”
+
+Filby contented himself with laughter.
+
+“But I have experimental verification,” said the Time Traveller.
+
+“It would be remarkably convenient for the historian,” the Psychologist suggested. “One might travel back and verify the accepted account of the Battle of Hastings, for instance!”
+
+“Don’t you think you would attract attention?” said the Medical Man. “Our ancestors had no great tolerance for anachronisms.”
+
+“One might get one’s Greek from the very lips of Homer and Plato,” the Very Young Man thought.
+
+“In which case they would certainly plough you for the Little-go. The German scholars have improved Greek so much.”
+
+“Then there is the future,” said the Very Young Man. “Just think! One might invest all one’s money, leave it to accumulate at interest, and hurry on ahead!”
+
+“To discover a society,” said I, “erected on a strictly communistic basis.”
+
+“Of all the wild extravagant theories!” began the Psychologist.
+
+“Yes, so it seemed to me, and so I never talked of it until—”
+
+“Experimental verification!” cried I. “You are going to verify _that_?”
+
+“The experiment!” cried Filby, who was getting brain-weary.
+
+“Let’s see your experiment anyhow,” said the Psychologist, “though it’s all humbug, you know.”
+
+The Time Traveller smiled round at us. Then, still smiling faintly, and with his hands deep in his trousers pockets, he walked slowly out of the room, and we heard his slippers shuffling down the long passage to his laboratory.
+
+The Psychologist looked at us. “I wonder what he’s got?”
+
+“Some sleight-of-hand trick or other,” said the Medical Man, and Filby tried to tell us about a conjuror he had seen at Burslem, but before he had finished his preface the Time Traveller came back, and Filby’s anecdote collapsed.
+
+II. The Machine
+
+The thing the Time Traveller held in his hand was a glittering metallic framework, scarcely larger than a small clock, and very delicately made. There was ivory in it, and some transparent crystalline substance. And now I must be explicit, for this that follows—unless his explanation is to be accepted—is an absolutely unaccountable thing. He took one of the small octagonal tables that were scattered about the room, and set it in front of the fire, with two legs on the hearthrug. On this table he placed the mechanism. Then he drew up a chair, and sat down. The only other object on the table was a small shaded lamp, the bright light of which fell full upon the model. There were also perhaps a dozen candles about, two in brass candlesticks upon the mantel and several in sconces, so that the room was brilliantly illuminated. I sat in a low arm-chair nearest the fire, and I drew this forward so as to be almost between the Time Traveller and the fireplace. Filby sat behind him, looking over his shoulder. The Medical Man and the Provincial Mayor watched him in profile from the right, the Psychologist from the left. The Very Young Man stood behind the Psychologist. We were all on the alert. It appears incredible to me that any kind of trick, however subtly conceived and however adroitly done, could have been played upon us under these conditions.
+
+The Time Traveller looked at us, and then at the mechanism. “Well?” said the Psychologist.
+
+“This little affair,” said the Time Traveller, resting his elbows upon the table and pressing his hands together above the apparatus, “is only a model. It is my plan for a machine to travel through time. You will notice that it looks singularly askew, and that there is an odd twinkling appearance about this bar, as though it was in some way unreal.” He pointed to the part with his finger. “Also, here is one little white lever, and here is another.”
+
+The Medical Man got up out of his chair and peered into the thing. “It’s beautifully made,” he said.
+
+“It took two years to make,” retorted the Time Traveller. Then, when we had all imitated the action of the Medical Man, he said: “Now I want you clearly to understand that this lever, being pressed over, sends the machine gliding into the future, and this other reverses the motion. This saddle represents the seat of a time traveller. Presently I am going to press the lever, and off the machine will go. It will vanish, pass into future Time, and disappear. Have a good look at the thing. Look at the table too, and satisfy yourselves there is no trickery. I don’t want to waste this model, and then be told I’m a quack.”
+
+There was a minute’s pause perhaps. The Psychologist seemed about to speak to me, but changed his mind. Then the Time Traveller put forth his finger towards the lever. “No,” he said suddenly. “Lend me your hand.” And turning to the Psychologist, he took that individual’s hand in his own and told him to put out his forefinger. So that it was the Psychologist himself who sent forth the model Time Machine on its interminable voyage. We all saw the lever turn. I am absolutely certain there was no trickery. There was a breath of wind, and the lamp flame jumped. One of the candles on the mantel was blown out, and the little machine suddenly swung round, became indistinct, was seen as a ghost for a second perhaps, as an eddy of faintly glittering brass and ivory; and it was gone—vanished! Save for the lamp the table was bare.
+
+Everyone was silent for a minute. Then Filby said he was damned.
+
+The Psychologist recovered from his stupor, and suddenly looked under the table. At that the Time Traveller laughed cheerfully. “Well?” he said, with a reminiscence of the Psychologist. Then, getting up, he went to the tobacco jar on the mantel, and with his back to us began to fill his pipe.
+
+We stared at each other. “Look here,” said the Medical Man, “are you in earnest about this? Do you seriously believe that that machine has travelled into time?”
+
+“Certainly,” said the Time Traveller, stooping to light a spill at the fire. Then he turned, lighting his pipe, to look at the Psychologist’s face. (The Psychologist, to show that he was not unhinged, helped himself to a cigar and tried to light it uncut.) “What is more, I have a big machine nearly finished in there”—he indicated the laboratory—“and when that is put together I mean to have a journey on my own account.”
+
+“You mean to say that that machine has travelled into the future?” said Filby.
+
+“Into the future or the past—I don’t, for certain, know which.”
+
+After an interval the Psychologist had an inspiration. “It must have gone into the past if it has gone anywhere,” he said.
+
+“Why?” said the Time Traveller.
+
+“Because I presume that it has not moved in space, and if it travelled into the future it would still be here all this time, since it must have travelled through this time.”
+
+“But,” said I, “If it travelled into the past it would have been visible when we came first into this room; and last Thursday when we were here; and the Thursday before that; and so forth!”
+
+“Serious objections,” remarked the Provincial Mayor, with an air of impartiality, turning towards the Time Traveller.
+
+“Not a bit,” said the Time Traveller, and, to the Psychologist: “You think. _You_ can explain that. It’s presentation below the threshold, you know, diluted presentation.”
+
+“Of course,” said the Psychologist, and reassured us. “That’s a simple point in psychology. I should have thought of it. It’s plain enough, and helps the paradox delightfully. We cannot see it, nor can we appreciate this machine, any more than we can the spoke of a wheel spinning, or a bullet flying through the air. If it is travelling through time fifty times or a hundred times faster than we are, if it gets through a minute while we get through a second, the impression it creates will of course be only one-fiftieth or one-hundredth of what it would make if it were not travelling in time. That’s plain enough.” He passed his hand through the space in which the machine had been. “You see?” he said, laughing.
+
+We sat and stared at the vacant table for a minute or so. Then the Time Traveller asked us what we thought of it all.
+
+“It sounds plausible enough tonight,” said the Medical Man; “but wait until tomorrow. Wait for the common sense of the morning.”
+
+“Would you like to see the Time Machine itself?” asked the Time Traveller. And therewith, taking the lamp in his hand, he led the way down the long, draughty corridor to his laboratory. I remember vividly the flickering light, his queer, broad head in silhouette, the dance of the shadows, how we all followed him, puzzled but incredulous, and how there in the laboratory we beheld a larger edition of the little mechanism which we had seen vanish from before our eyes. Parts were of nickel, parts of ivory, parts had certainly been filed or sawn out of rock crystal. The thing was generally complete, but the twisted crystalline bars lay unfinished upon the bench beside some sheets of drawings, and I took one up for a better look at it. Quartz it seemed to be.
+
+“Look here,” said the Medical Man, “are you perfectly serious? Or is this a trick—like that ghost you showed us last Christmas?”
+
+“Upon that machine,” said the Time Traveller, holding the lamp aloft, “I intend to explore time. Is that plain? I was never more serious in my life.”`;
+
+$('pdfbtn').addEventListener('click',()=>{
+  if(!MATS[0]){alert('Nothing encoded yet.');return;}
+  const pdf=bookmarkPDF();
+  const bytes=new Uint8Array(pdf.length);
+  for(let i=0;i<pdf.length;i++) bytes[i]=pdf.charCodeAt(i)&255;
+  const url=URL.createObjectURL(new Blob([bytes],{type:'application/pdf'}));
+  const a=document.createElement('a');
+  a.href=url; a.download=(($('mt').value||'bookmark').replace(/[^a-z0-9]+/gi,'-').toLowerCase())+'.pdf';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),6000);
+});
+$('printbtn').addEventListener('click',()=>window.print());
+let deb; ['txt','mt','ma','mi','mu'].forEach(id=>
+  $(id).addEventListener('input',()=>{clearTimeout(deb);deb=setTimeout(build,400);}));
+
+/* ---------- load excerpt from a .txt file ---------- */
+$('loadtxtbtn').addEventListener('click',()=>$('txtfile').click());
+$('txtfile').addEventListener('change',async e=>{
+  const f=e.target.files&&e.target.files[0]; if(!f)return;
+  const MAXFILE=5*1024*1024; // sanity cap; the capacity gauge below catches real over-budget text
+  if(f.size>MAXFILE){
+    $('stat').className='status failed';
+    $('stat').textContent='FILE TOO LARGE — pick a plain-text file under 5 MB';
+    e.target.value=''; return;
+  }
+  try{
+    const text=(await f.text()).replace(/^﻿/,'').replace(/\r\n/g,'\n');
+    $('txt').value=text;
+    clearTimeout(deb);
+    await build();
+  }catch(err){
+    $('stat').className='status failed';
+    $('stat').textContent='Could not read that file — '+(err&&err.message?err.message:'unsupported format');
+  }finally{
+    e.target.value='';
+  }
+});
+
+build();
+
+/* ---------- offline ---------- */
+/* ---------- offline, and staying current ----------
+   The old registration installed a worker and never looked again, so an
+   installed copy could serve a months-old page indefinitely. That is what made
+   a fixed app look broken on the phone while the server had the fix. */
+const BUILD='20260901-1509';
+if('serviceWorker' in navigator && location.protocol==='https:'){
+  addEventListener('load',async()=>{
+    try{
+      const reg=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
+      reg.update();                       // ask on every launch
+      setInterval(()=>reg.update(), 60*60*1000);
+      let reloading=false;
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{
+        if(reloading)return; reloading=true; location.reload();
+      });
+    }catch(e){}
+  });
+}
+// show which build is actually running, so a stale cache is obvious at a glance
+addEventListener('DOMContentLoaded',()=>{
+  const f=document.querySelector('footer');
+  if(f){ const b=document.createElement('div');
+    b.style.cssText='margin-top:10px;opacity:.6';
+    b.textContent='build '+BUILD+' · author app';
+    f.appendChild(b); }
+});
+</script>
+
+
+</body></html>

@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>QR Bookmark Reader — scan and read</title>
+<meta name="description" content="Scan the four panels on a QR Bookmark card and read the recovered text. Any three of four panels rebuild it. Works offline.">
+<meta name="theme-color" content="#14140f">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon-192.png" sizes="192x192" type="image/png">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="QR Reader">
+<link rel="stylesheet" href="./fonts.css">
+<style>
+:root{--stock:#E8E6DE;--ink:#17181C;--slug:#6E6C64;--hair:#C3C0B6;--cy:#00c2e0}
+*{box-sizing:border-box}
+body{margin:0;background:#14140f;color:#E8E6DE;
+ font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.5;
+ -webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%}
+.sheet{max-width:640px;margin:0 auto;padding:20px 18px 60px;min-height:100vh;
+ display:flex;flex-direction:column;justify-content:center}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.18em;
+ text-transform:uppercase;color:#8a8878}
+h1{font-family:"Oswald",sans-serif;font-weight:500;letter-spacing:.03em;text-transform:uppercase;
+ font-size:clamp(28px,8vw,44px);line-height:.98;margin:8px 0 2px;color:#f0efe6}
+h1 span{font-weight:300;color:#8a8878}
+.dek{max-width:52ch;margin:10px 0 0;font-size:14.5px;color:#c9c7b8}
+button:focus-visible,a:focus-visible{outline:2px solid var(--cy);outline-offset:1px}
+.btn{font-family:"IBM Plex Mono",monospace;font-size:12px;letter-spacing:.1em;
+ text-transform:uppercase;padding:14px 20px;background:#E8E6DE;color:#17181C;
+ border:1px solid #E8E6DE;cursor:pointer}
+.btn.ghost{background:transparent;color:#E8E6DE;border-color:#5a5a4c}
+.btnrow{display:flex;gap:9px;margin-top:24px;flex-wrap:wrap}
+footer{margin-top:36px;padding-top:16px;border-top:1px solid #3a3a30;
+ font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:#8a8878;line-height:1.75}
+footer b{color:#c9c7b8}
+
+/* ---------- library (saved books on this device) ---------- */
+.libwrap{margin-top:34px}
+.libitem{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid #3a3a30}
+.libinfo{flex:1;min-width:0;background:transparent;border:0;text-align:left;padding:0;cursor:pointer}
+.libtitle{font-family:"Oswald",sans-serif;text-transform:uppercase;font-size:14px;color:#f0efe6;
+ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.libby{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;color:#8a8878;
+ margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.libdel{flex:none;background:transparent;border:1px solid #4a4a3c;color:#8a8878;
+ width:30px;height:30px;border-radius:6px;cursor:pointer;font-size:15px;line-height:1}
+
+/* ---------- scanner ---------- */
+#scan{position:fixed;inset:0;z-index:60;background:#14140f;color:#E8E6DE;display:none;
+ flex-direction:column;padding-bottom:env(safe-area-inset-bottom)}
+#scan.on{display:flex}
+#scanbar{display:flex;align-items:center;gap:9px;
+ padding:calc(9px + env(safe-area-inset-top)) 12px 9px;border-bottom:1px solid #3a3a30;
+ font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+#scanbar b{flex:1;color:#f0efe6;font-weight:600}
+#scanstage{flex:1 1 auto;position:relative;min-height:0;display:flex;align-items:center;
+ justify-content:center;background:#0d0d0a;overflow:hidden}
+#cam,#photoPreview{max-width:100%;max-height:100%;display:block;object-fit:contain}
+#photoPreview{display:none}
+#scan.photo-mode #reticle{display:none}
+#reticle{position:absolute;width:min(76vw,76vh);height:min(76vw,76vh);max-width:680px;
+ max-height:680px;border:3px solid #00c2e0;border-radius:8px;
+ box-shadow:0 0 0 9999px rgba(0,0,0,.35);pointer-events:none;transition:border-color .12s,box-shadow .12s}
+/* Fixing both width and height (as before) leaves aspect-ratio with nothing to
+   resolve — it only kicks in when one axis is auto — so the box rendered
+   square no matter what ratio was declared. Fix the height to the taller of
+   the two viewport limits and let width follow from aspect-ratio instead. */
+#scan.whole-mode #reticle{height:min(86vh,86vw*9.3/2.6);width:auto;max-height:none;
+ max-width:82vw;aspect-ratio:2.6/9.3;border-radius:5px}
+#reticle.read{border-color:#20e37c;box-shadow:0 0 0 9999px rgba(0,0,0,.35),0 0 22px #20e37c}
+#reticle.invalid{border-color:#ffd479;box-shadow:0 0 0 9999px rgba(0,0,0,.35),0 0 22px #ffd479}
+#shards{display:flex;gap:6px;padding:10px 12px;background:#1a1a14}
+#shards div{flex:1;text-align:center;padding:9px 4px;border:1px solid #4a4a3c;
+ font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.08em;color:#8a8878}
+#shards div.got{border-color:#046b34;background:#0d2a1a;color:#5fd39a}
+#scanhint{font-family:"IBM Plex Mono",monospace;font-size:11.5px;line-height:1.55;
+ color:#c9c7b8;padding:0 12px 10px;background:#1a1a14}
+#scanhint em{color:#ffd479;font-style:normal}
+#scanfoot{display:flex;gap:8px;padding:0 12px 14px;flex-wrap:wrap;background:#1a1a14}
+#scanfoot .btn{background:#E8E6DE;color:#17181C;border-color:#E8E6DE}
+#scanfoot .btn.ghost{background:transparent;color:#E8E6DE;border-color:#5a5a4c}
+/* ---------- reader ---------- */
+#reader{position:fixed;inset:0;z-index:95;display:none;flex-direction:column;
+ padding-bottom:env(safe-area-inset-bottom);
+ --r-bg:#F7F3EA;--r-ink:#2b2a25;--r-sub:#8a8477;--r-line:#e2ddcc;
+ background:var(--r-bg);color:var(--r-ink)}
+#reader.on{display:flex}
+#reader[data-theme="dark"]{--r-bg:#1b1a17;--r-ink:#e9e4d6;--r-sub:#8f897a;--r-line:#332f27}
+#rbar{display:flex;align-items:center;gap:8px;background:var(--r-bg);
+ padding:calc(9px + env(safe-area-inset-top)) 10px 9px;border-bottom:1px solid var(--r-line);
+ position:relative;z-index:2}
+#rbar b{flex:1;font-family:"Oswald",sans-serif;text-transform:uppercase;letter-spacing:.03em;
+ font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+ color:var(--r-ink)}
+.ricon{width:36px;height:36px;flex:none;display:flex;align-items:center;justify-content:center;
+ border:1px solid var(--r-line);background:transparent;color:var(--r-ink);border-radius:8px;
+ cursor:pointer;padding:0}
+.ricon svg{width:18px;height:18px;stroke:currentColor;fill:none}
+/* icon shows what tapping switches TO, not the current state */
+#reader[data-theme="dark"] .ricon .moon,#reader:not([data-theme="dark"]) .ricon .sun{display:none}
+#rsettings{position:absolute;top:100%;right:8px;margin-top:6px;width:min(300px,calc(100vw - 16px));
+ background:var(--r-bg);border:1px solid var(--r-line);border-radius:12px;
+ box-shadow:0 10px 32px rgba(0,0,0,.18);z-index:10;
+ opacity:0;visibility:hidden;transform:translateY(-6px) scale(.98);transform-origin:top right;
+ transition:opacity .16s ease,transform .16s ease,visibility .16s}
+#rsettings.on{opacity:1;visibility:visible;transform:translateY(0) scale(1)}
+.rrow{padding:11px 14px;border-bottom:1px solid var(--r-line)}
+.rrow:last-child{border-bottom:0}
+.rrowhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.rlabel{font-family:"IBM Plex Mono",monospace;font-size:10px;
+ letter-spacing:.14em;text-transform:uppercase;color:var(--r-sub)}
+#rSizeVal,#rLHVal{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--r-ink)}
+.rseg{display:flex;gap:6px}
+.rseg button{flex:1;padding:8px 4px;border:1px solid var(--r-line);background:transparent;
+ color:var(--r-ink);font-family:"IBM Plex Sans",sans-serif;font-size:12.5px;cursor:pointer;
+ border-radius:6px}
+.rseg button.on{background:var(--r-ink);color:var(--r-bg);border-color:var(--r-ink)}
+.rslider{width:100%;display:block;-webkit-appearance:none;appearance:none;height:4px;
+ background:var(--r-line);border-radius:2px;outline:none;margin:2px 0}
+.rslider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:17px;height:17px;
+ border-radius:50%;background:var(--r-ink);cursor:pointer;border:2px solid var(--r-bg);
+ box-shadow:0 0 0 1px var(--r-line)}
+.rslider::-moz-range-thumb{width:17px;height:17px;border-radius:50%;background:var(--r-ink);
+ cursor:pointer;border:2px solid var(--r-bg);box-shadow:0 0 0 1px var(--r-line)}
+#rstage{flex:1 1 auto;position:relative;min-height:0;display:flex}
+#rcontent{flex:1;position:relative;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch}
+#rinner{max-width:38em;margin:0 auto;padding:8vh 22px 12vh;box-sizing:border-box}
+#rby{font-family:"IBM Plex Mono",monospace;font-size:.62em;letter-spacing:.1em;
+ text-transform:uppercase;color:var(--r-sub);margin-bottom:1.4em}
+#rbody{line-height:1.75}
+#rbody p{white-space:pre-wrap;margin:0 0 1.2em}
+#rbody p:last-child{margin-bottom:0}
+#reader[data-font="serif"] #rbody,#reader[data-font="serif"] #rby{
+ font-family:Georgia,'Iowan Old Style','Palatino Linotype','Book Antiqua',serif}
+/* Only the paragraph explicitly marked .rdropcap gets one — plain
+   ::first-letter on the whole body grabs the first character of whatever
+   text happens to come first, heading or not, which looks broken when an
+   excerpt opens with a short title line instead of flowing prose. */
+#reader[data-font="serif"] #rbody p.rdropcap::first-letter{
+ float:left;font-size:2.9em;line-height:.82;padding:.03em .07em 0 0;font-weight:600}
+#reader[data-font="sans"] #rbody,#reader[data-font="sans"] #rby{
+ font-family:"IBM Plex Sans",system-ui,sans-serif}
+#reader[data-font="mono"] #rbody,#reader[data-font="mono"] #rby{font-family:"IBM Plex Mono",monospace}
+#rpageind{text-align:center;font-family:"IBM Plex Mono",monospace;font-size:10.5px;
+ letter-spacing:.12em;color:var(--r-sub);padding:6px 0 calc(6px + env(safe-area-inset-bottom));
+ background:var(--r-bg);border-top:1px solid var(--r-line)}
+</style>
+</head>
+<body>
+<div class="sheet">
+ <div class="eyebrow">QR Bookmark Reader · works offline</div>
+ <h1>Scan a card <span>/ read it</span></h1>
+ <p class="dek">Point your camera at a QR Bookmark card — the four panels scan automatically,
+  and any three of the four rebuild the whole excerpt. Recovered text opens straight into a
+  full-screen reader with adjustable font, size, and light or dark mode. Once scanned, a book
+  is saved on this device so you never have to scan it again.</p>
+ <div class="btnrow">
+  <button class="btn" id="scanbtn">Scan a card</button>
+ </div>
+ <div id="library" class="libwrap" hidden>
+  <div class="eyebrow">Saved on this device</div>
+  <div id="libList"></div>
+ </div>
+ <footer>
+  <b>No app required.</b> Every panel is also a plain link — a phone's stock camera app can
+  open one directly, and once three of the four have been tapped in turn, the reader opens
+  automatically with no install needed.
+ </footer>
+</div>
+
+<div id="scan">
+ <div id="scanbar"><b id="scantitle">Scan a card</b>
+  <button class="btn ghost" id="scanclose" style="padding:6px 10px">Close</button></div>
+ <div id="scanstage"><video id="cam" playsinline="" muted=""></video>
+  <img id="photoPreview" alt="Selected QR panel"><div id="reticle"></div></div>
+ <div id="shards">
+   <div data-s="0">01</div><div data-s="1">02</div><div data-s="2">03</div><div data-s="3">04</div>
+ </div>
+ <div id="scanhint">Hold one panel so it fills the square. Captures automatically.</div>
+ <div id="scandiag" style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;line-height:1.45;color:#8a8878;padding:0 12px 10px;background:#1a1a14;white-space:pre-wrap;word-break:break-all">diagnostics: waiting for camera…</div>
+ <div id="scanfoot">
+   <button class="btn ghost" id="capture">Photo of whole card</button>
+   <button class="btn ghost" id="pick">Use a photo instead</button>
+   <button class="btn ghost" id="clearsh">Start over</button>
+   <input type="file" id="file" accept="image/*" style="display:none">
+ </div>
+</div>
+
+<div id="reader">
+ <div id="rbar">
+  <button class="ricon" id="readerClose" aria-label="Close">
+   <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+  <b id="readerTitle"></b>
+  <button class="ricon" id="readerTheme" aria-label="Toggle dark mode">
+   <svg class="sun" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round">
+    <circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>
+   </svg>
+   <svg class="moon" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/>
+   </svg>
+  </button>
+  <button class="ricon" id="readerGear" aria-label="Reading settings">
+   <svg viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round">
+    <path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h12M20 18h0"/>
+    <circle cx="13" cy="6" r="2" fill="var(--r-bg)"/><circle cx="7" cy="12" r="2" fill="var(--r-bg)"/><circle cx="16" cy="18" r="2" fill="var(--r-bg)"/>
+   </svg>
+  </button>
+  <div id="rsettings">
+   <div class="rrow"><div class="rlabel" style="margin-bottom:8px">Typeface</div><div class="rseg" id="rFontSeg">
+    <button data-f="serif">Serif</button><button data-f="sans">Sans</button><button data-f="mono">Mono</button>
+   </div></div>
+   <div class="rrow"><div class="rrowhead"><span class="rlabel">Text size</span><span id="rSizeVal">19px</span></div>
+    <input type="range" class="rslider" id="rSizeSlider" min="14" max="30" step="1" value="19">
+   </div>
+   <div class="rrow"><div class="rrowhead"><span class="rlabel">Line spacing</span><span id="rLHVal">1.75</span></div>
+    <input type="range" class="rslider" id="rLHSlider" min="1.3" max="2.2" step="0.05" value="1.75">
+   </div>
+  </div>
+ </div>
+ <div id="rstage">
+  <div id="rcontent"><div id="rinner">
+   <div id="rby"></div>
+   <div id="rbody"></div>
+  </div></div>
+ </div>
+ <div id="rpageind"></div>
+</div>
+
+<script src="./jsqr.js"></script>
+<script src="./zxing.js"></script>
+<script src="./codec.js"></script>
+<script>
+"use strict";
+
+/* ================= local library ==================
+   Once a card decodes, save the recovered book so it never has to be
+   rescanned — keyed by cardId (the crc32 already carried in every panel),
+   so re-scanning the same card updates its entry instead of duplicating
+   it. Full text lives under its own key rather than inside the index
+   array, so listing the library doesn't mean parsing every saved book's
+   text just to show a title. */
+const LIBKEY='qb.library';
+function loadLibrary(){
+  try{ return JSON.parse(localStorage.getItem(LIBKEY)||'[]'); }catch(e){ return []; }
+}
+function saveLibraryIndex(list){
+  try{ localStorage.setItem(LIBKEY, JSON.stringify(list)); }catch(e){}
+}
+function saveBook(cardId,o){
+  if(cardId==null) return;
+  const id=String(cardId>>>0);
+  try{ localStorage.setItem('qb.book.'+id, JSON.stringify(o)); }catch(e){ return; }
+  const lib=loadLibrary().filter(e=>e.id!==id);
+  lib.unshift({id, t:o.t||'Untitled', a:o.a||'', savedAt:Date.now()});
+  saveLibraryIndex(lib);
+  renderLibrary();
+}
+function loadBook(id){
+  try{ return JSON.parse(localStorage.getItem('qb.book.'+id)||'null'); }catch(e){ return null; }
+}
+function deleteBook(id){
+  try{ localStorage.removeItem('qb.book.'+id); }catch(e){}
+  saveLibraryIndex(loadLibrary().filter(e=>e.id!==id));
+  renderLibrary();
+}
+function renderLibrary(){
+  const wrap=$('library'), list=$('libList');
+  if(!wrap||!list) return;
+  const lib=loadLibrary();
+  wrap.hidden=lib.length===0;
+  list.innerHTML='';
+  for(const entry of lib){
+    const row=document.createElement('div'); row.className='libitem';
+    const info=document.createElement('button');
+    info.type='button'; info.className='libinfo';
+    const t=document.createElement('div'); t.className='libtitle'; t.textContent=entry.t||'Untitled';
+    const by=document.createElement('div'); by.className='libby'; by.textContent=entry.a||'';
+    info.appendChild(t); info.appendChild(by);
+    info.addEventListener('click',()=>{ const o=loadBook(entry.id); if(o) openReader(o); });
+    const del=document.createElement('button');
+    del.type='button'; del.className='libdel'; del.textContent='×';
+    del.setAttribute('aria-label','Remove '+(entry.t||'this book'));
+    del.addEventListener('click',()=>{
+      if(confirm('Remove "'+(entry.t||'Untitled')+'" from this device?')) deleteBook(entry.id);
+    });
+    row.appendChild(info); row.appendChild(del);
+    list.appendChild(row);
+  }
+}
+renderLibrary();
+
+/* ================= reader ================= */
+(function(){
+  const R=$('reader'), content=$('rcontent'), inner=$('rinner'),
+        byEl=$('rby'), bodyEl=$('rbody'), titleEl=$('readerTitle'), pageInd=$('rpageind'),
+        settings=$('rsettings'), sizeSlider=$('rSizeSlider'), lhSlider=$('rLHSlider');
+  if(!R) return;
+  const PKEY='qb.reader.prefs';
+  let prefs={font:'serif',size:19,lineHeight:1.75,
+             theme:(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')};
+  try{ Object.assign(prefs, JSON.parse(localStorage.getItem(PKEY)||'{}')); }catch(e){}
+
+  function savePrefs(){ try{ localStorage.setItem(PKEY, JSON.stringify(prefs)); }catch(e){} }
+
+  function applyPrefs(){
+    R.dataset.theme=prefs.theme; R.dataset.font=prefs.font;
+    inner.style.fontSize=prefs.size+'px';
+    bodyEl.style.lineHeight=prefs.lineHeight;
+    $('rSizeVal').textContent=prefs.size+'px';
+    sizeSlider.value=prefs.size;
+    $('rLHVal').textContent=prefs.lineHeight.toFixed(2);
+    lhSlider.value=prefs.lineHeight;
+    [...$('rFontSeg').children].forEach(b=>b.classList.toggle('on',b.dataset.f===prefs.font));
+    updateScrollProgress();
+  }
+  function closeSettings(){ settings.classList.remove('on'); }
+  function updateScrollProgress(){
+    const max=content.scrollHeight-content.clientHeight;
+    const pct=max>0 ? Math.round(content.scrollTop/max*100) : 100;
+    pageInd.textContent=pct+'%';
+  }
+  content.addEventListener('scroll', updateScrollProgress, {passive:true});
+
+  document.addEventListener('keydown',e=>{
+    if(!R.classList.contains('on')) return;
+    if(e.key==='Escape'){
+      if(settings.classList.contains('on')) closeSettings(); else closeReader();
+    }
+  });
+
+  $('rFontSeg').addEventListener('click',e=>{
+    const b=e.target.closest('button[data-f]'); if(!b) return;
+    prefs.font=b.dataset.f; savePrefs(); applyPrefs();
+  });
+  sizeSlider.addEventListener('input',()=>{
+    prefs.size=+sizeSlider.value; $('rSizeVal').textContent=prefs.size+'px';
+    inner.style.fontSize=prefs.size+'px';
+  });
+  sizeSlider.addEventListener('change',savePrefs);
+  lhSlider.addEventListener('input',()=>{
+    prefs.lineHeight=+lhSlider.value; $('rLHVal').textContent=prefs.lineHeight.toFixed(2);
+    bodyEl.style.lineHeight=prefs.lineHeight;
+  });
+  lhSlider.addEventListener('change',savePrefs);
+  $('readerTheme').addEventListener('click',()=>{
+    prefs.theme=prefs.theme==='dark'?'light':'dark'; savePrefs(); applyPrefs();
+  });
+  $('readerGear').addEventListener('click',e=>{
+    e.stopPropagation(); settings.classList.toggle('on');
+  });
+  // Click anywhere outside the popover — but not the gear button that opens
+  // it, or its own toggle would immediately re-close what it just opened —
+  // closes it, the standard way a floating menu is expected to behave.
+  document.addEventListener('click',e=>{
+    if(!settings.classList.contains('on')) return;
+    if(settings.contains(e.target)||e.target.closest('#readerGear')) return;
+    closeSettings();
+  });
+  $('readerClose').addEventListener('click',closeReader);
+  function closeReader(){ R.classList.remove('on'); closeSettings(); }
+
+  /* Split on blank lines into real paragraphs instead of one pre-wrap blob,
+     so the drop cap (see CSS) can be pinned to the first paragraph that
+     actually looks like the start of prose rather than to whatever
+     character happens to come first in the raw text. */
+  function renderBody(text){
+    bodyEl.innerHTML='';
+    const paras=String(text||'').split(/\n{2,}/).map(p=>p.trim()).filter(Boolean);
+    let dropped=false;
+    for(const p of paras){
+      const el=document.createElement('p');
+      el.textContent=p;
+      if(!dropped && p.length>=60){ el.classList.add('rdropcap'); dropped=true; }
+      bodyEl.appendChild(el);
+    }
+  }
+
+  window.openReader=function(o){
+    titleEl.textContent=o.t||'Untitled';
+    const words=String(o.x||'').trim().split(/\s+/).filter(Boolean).length;
+    byEl.textContent=[o.a,o.i?'ISBN '+o.i:'',o.u,words?words+' words':'']
+      .filter(Boolean).join(' · ');
+    renderBody(o.x);
+    content.scrollTop=0; // switching books shouldn't inherit the last one's scroll position
+    // Show the panel before measuring anything against it — a hidden
+    // (display:none) element reports scrollHeight 0, which made the scroll
+    // percentage read "100%" instead of "0%" on every open.
+    R.classList.add('on');
+    applyPrefs();
+  };
+})();
+
+/* ---------- opened from a scanned panel link ----------
+   The stock camera shows each panel as a tappable URL. Following one lands
+   here with the shard in the fragment: stash it, and once three of the four
+   have been collected the text assembles with no app scanning at all. */
+(function(){
+  if(!location.hash) return;
+  const u=parseFragment(location.hash);
+  if(!u) return;
+  const KEY='qb.'+u.cardId+'.'+u.total;
+  let store={};
+  try{ store=JSON.parse(localStorage.getItem(KEY)||'{}'); }catch(e){}
+  store[u.idx]=Array.from(u.shard);
+  try{ localStorage.setItem(KEY,JSON.stringify(store)); }catch(e){}
+  const have=Object.keys(store).length;
+  const box=document.createElement('div');
+  box.style.cssText='position:fixed;left:0;right:0;top:0;z-index:90;background:#17181C;'+
+    'color:#E8E6DE;padding:calc(12px + env(safe-area-inset-top)) 14px 14px;'+
+    'font:13px/1.5 "IBM Plex Mono",monospace';
+  document.addEventListener('DOMContentLoaded',()=>document.body.appendChild(box));
+  if(have<3){
+    box.innerHTML=`<b>Panel ${u.idx+1} of 4 saved.</b><br>`+
+      `Scan <b>${3-have}</b> more panel${3-have===1?'':'s'} with your camera to read the text.`;
+    return;
+  }
+  const arr=[0,1,2,3].map(i=>store[i]?Uint8Array.from(store[i]):null);
+  const merged=reassemble(arr,u.per,u.total);
+  if(!merged){box.textContent='Panels disagree — tap Start over in the scanner.';return;}
+  inflate(merged).then(str=>{
+    const o=JSON.parse(str);
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    box.remove();
+    saveBook(u.cardId,o);
+    openReader(o);
+  }).catch(()=>{box.textContent='Recovered the panels but could not decompress.';});
+})();
+
+/* ================= scanner: live QR reading ================= */
+(function(){
+  const scan=$('scan'), cam=$('cam'), preview=$('photoPreview'), reticle=$('reticle'),
+        capture=$('capture'), hint=$('scanhint');
+  if(!scan||!cam) return;
+  let stream=null, raf=0, lastScan=0, previewUrl=null,
+      work=document.createElement('canvas'), shards={}, meta=null, assembling=false;
+  const say=t=>{hint.innerHTML=t;};
+  let reticleTimer=0;
+  function flashReticle(kind='read'){
+    reticle.classList.remove('read','invalid');
+    // Restart the transition even when consecutive panels decode quickly.
+    void reticle.offsetWidth;
+    reticle.classList.add(kind);
+    clearTimeout(reticleTimer);
+    reticleTimer=setTimeout(()=>reticle.classList.remove('read','invalid'),700);
+  }
+
+  function sync(){
+    [...$('shards').children].forEach(d=>d.classList.toggle('got',shards[d.dataset.s]!==undefined));
+    const n=Object.keys(shards).length;
+    $('scantitle').textContent=n?`${n} of 4 panels read`:'Scan a card';
+  }
+  function accept(payload,quiet=false,deferAssembly=false){
+    const u=unwrap(payload);
+    if(!u){
+      flashReticle('invalid');
+      if(!quiet)say('QR found, but it is not a QR Bookmark panel.');
+      return false;
+    }
+    flashReticle();
+    if(shards[u.idx]!==undefined){
+      if(!quiet)say(`Panel <em>0${u.idx+1}</em> is already read — move to another panel.`);
+      return false;
+    }
+    if(meta && (meta.format!==u.format||meta.per!==u.per||meta.total!==u.total||
+        (meta.cardId!==null&&u.cardId!==null&&meta.cardId!==u.cardId))){
+      if(!quiet)say('That panel belongs to a <em>different card</em>. Start over to switch.'); return false;
+    }
+    meta={format:u.format,per:u.per,total:u.total,cardId:u.cardId};
+    shards[u.idx]=u.shard; sync();
+    // capture is automatic, so confirm it in a way the eye does not have to catch
+    try{ if(navigator.vibrate) navigator.vibrate(Object.keys(shards).length>=3?[40,60,40]:35); }catch(e){}
+    const n=Object.keys(shards).length;
+    if(n>=3){ if(!deferAssembly)assemble(); return true; }
+    if(!quiet)say(`Panel <em>0${u.idx+1}</em> read. <em>${3-n}</em> to go — move to the next panel.`);
+    return true;
+  }
+  function assemble(){
+    if(assembling)return;
+    assembling=true;
+    const arr=[0,1,2,3].map(i=>shards[i]||null);
+    const merged=reassemble(arr,meta.per,meta.total);
+    if(!merged){ assembling=false;say('Panels disagree about the payload size.'); return; }
+    if(meta.cardId!==null&&crc32(merged)!==meta.cardId){
+      assembling=false;say('A panel failed the card integrity check. Clear the scan and try again.'); return;
+    }
+    inflate(merged).then(str=>{
+      const o=JSON.parse(str);
+      closeScanUI();
+      saveBook(meta.cardId,o);
+      openReader(o);
+    }).catch(()=>{assembling=false;say('Read the panels but the payload would not decompress.');});
+  }
+  /* Read every panel in one pass.
+     This used to decode one symbol, paint a white box over it, and scan again,
+     then repeat the whole thing over a ladder of sliding square windows — all
+     of it scaffolding around a decoder that could only ever return a single
+     symbol and got confused when four dense codes shared a frame. The decoder
+     now returns them all at once, so the scaffolding is gone. */
+  async function scanWholePhoto(){
+    const g=work.getContext('2d',{willReadFrequently:true});
+    const codes=await decodeAll(g.getImageData(0,0,work.width,work.height));
+    let accepted=0;
+    for(const txt of codes) if(accept(txt,true)) accepted++;
+    return {found:codes.length,accepted};
+  }
+  /* One panel at a time.
+     Framing the whole 9.3 in card put each panel at roughly 5.8 pixels per
+     module — under the ~6 needed to decode — because a panel is only a fifth
+     of the card's height. Filling the frame with a single panel instead gives
+     three to four times the resolution on the thing we actually have to read,
+     and it removes the need to line the card up with a guide at all. */
+  let scanPass=0, diagFrames=0, busy=false;
+  const diag=t=>{const e=$('scandiag'); if(e)e.textContent='diagnostics: '+t;};
+  function readFrame(now=0){
+    if(!stream){return;}
+    if(!busy && now-lastScan>=120 && cam.readyState===cam.HAVE_ENOUGH_DATA){
+      lastScan=now; busy=true;
+      const w=cam.videoWidth, h=cam.videoHeight;
+      if(w&&h){
+        // Whole frame, lightly downscaled. No crop hunting: the decoder can
+        // find several panels at once, so more of the card in view is better.
+        const scale=Math.min(1,1920/Math.max(w,h));
+        const tw=Math.round(w*scale), th=Math.round(h*scale);
+        work.width=tw; work.height=th;
+        const g=work.getContext('2d',{willReadFrequently:true});
+        g.drawImage(cam,0,0,tw,th);
+        const img=g.getImageData(0,0,tw,th);
+        const t0=(performance.now?performance.now():Date.now());
+        decodeAll(img).then(codes=>{
+          const ms=Math.round((performance.now?performance.now():Date.now())-t0);
+          diagFrames++;
+          let took=0;
+          for(const txt of codes){ if(accept(txt,false,true)) took++; }
+          if(codes.length){
+            diag(`frame ${diagFrames} · cam ${w}x${h} → ${tw}x${th} · ${ms}ms · ${ZXREADY?'zxing':'jsqr'}\n`+
+                 `${codes.length} code(s) in view, ${took} new\n${codes[0].slice(0,54)}`);
+          }else if(diagFrames%6===0){
+            diag(`frame ${diagFrames} · cam ${w}x${h} → ${tw}x${th} · ${ms}ms · ${ZXREADY?'zxing':'jsqr'} · nothing in view`);
+          }
+          if(Object.keys(shards).length>=3)assemble();
+          busy=false;
+        }).catch(()=>{busy=false;});
+      } else busy=false;
+    }
+    raf=requestAnimationFrame(readFrame);
+  }
+  function stop(){ if(raf)cancelAnimationFrame(raf); raf=0;
+    if(stream){stream.getTracks().forEach(t=>t.stop()); stream=null;} }
+  function closeScanUI(){
+    stop();
+    if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}
+    scan.classList.remove('photo-mode','whole-mode','on');
+    preview.removeAttribute('src');preview.style.display='none';cam.style.display='block';
+  }
+  async function start(){
+    if(previewUrl){URL.revokeObjectURL(previewUrl);previewUrl=null;}
+    scan.classList.remove('photo-mode');scan.classList.add('whole-mode');
+    preview.removeAttribute('src');preview.style.display='none';cam.style.display='block';
+    capture.disabled=false;capture.textContent='Photo of whole card';
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){
+      say('No camera API here. Use <em>Use a photo instead</em>.'); return;
+    }
+    try{
+      say('Requesting camera permission…');
+      stream=await navigator.mediaDevices.getUserMedia(
+        {video:{facingMode:{ideal:'environment'},width:{ideal:3840},height:{ideal:2160}},audio:false});
+      cam.srcObject=stream; await cam.play();
+      say('Point at the card. It reads <em>every panel it can see</em> and captures them on its own.');
+      // Actually run the scanner. The old whole-card flow only scanned when the
+      // Capture button was pressed, so when this became continuous nothing
+      // started the loop and readFrame sat there as dead code.
+      if(raf)cancelAnimationFrame(raf);
+      raf=requestAnimationFrame(readFrame);
+    }catch(e){
+      const why=e.name==='NotAllowedError'?'permission was denied — re-enable it in site settings'
+               :e.name==='NotFoundError'?'no camera found'
+               :e.name==='NotReadableError'?'the camera is busy in another app'
+               :e.name+': '+e.message;
+      say('Camera unavailable — '+why+'. Use <em>Use a photo instead</em>.');
+    }
+  }
+  capture.addEventListener('click',async()=>{
+    if(!stream){await start();return;}
+    if(cam.readyState<cam.HAVE_CURRENT_DATA){say('The camera is still focusing. Try again in a moment.');return;}
+    capture.disabled=true;say('Scanning the whole card from one still…');
+    const w=cam.videoWidth, h=cam.videoHeight;
+    // Crop to the same 2.6 × 9.3 outline shown over the camera. Removing the
+    // surrounding scene makes the four subsequent QR searches far more reliable.
+    const ratio=2.6/9.3;
+    const cardH=Math.min(h*.9,w*.84/ratio),cardW=cardH*ratio;
+    const cardX=(w-cardW)/2,cardY=(h-cardH)/2;
+    const s=Math.min(1,2800/cardH);
+    work.width=Math.max(1,Math.round(cardW*s));work.height=Math.max(1,Math.round(cardH*s));
+    const g=work.getContext('2d',{willReadFrequently:true});
+    g.drawImage(cam,cardX,cardY,cardW,cardH,0,0,work.width,work.height);
+    stop();
+    scan.classList.remove('whole-mode');scan.classList.add('photo-mode');
+    preview.src=work.toDataURL('image/jpeg',.94);preview.style.display='block';cam.style.display='none';
+    await new Promise(resolve=>setTimeout(resolve,30));
+    const result=await scanWholePhoto(), count=Object.keys(shards).length;
+    if(!result.found)say('No panels found in that photo. Better to scan them <em>one at a time</em> — hold a single panel so it fills the frame.');
+    else if(!count)say(`Found ${result.found} QR code${result.found===1?'':'s'}, but none was a valid bookmark panel.`);
+    else if(count<3)say(`Found <em>${count} of 4</em> from the photo. Point the camera at the missing panels <em>one at a time</em> to finish.`);
+    else say(`Found <em>${count} of 4 panels</em>. Recovering the text…`);
+    capture.disabled=false;capture.textContent=count>=3?'Captured':'Photo of whole card';
+  });
+  $('scanbtn').addEventListener('click',()=>{scan.classList.add('on');sync();start();});
+  $('scanclose').addEventListener('click',closeScanUI);
+  $('clearsh').addEventListener('click',()=>{stop();shards={};meta=null;assembling=false;
+    sync();start();});
+  $('pick').addEventListener('click',()=>$('file').click());
+  $('file').addEventListener('change',async e=>{
+    const f=e.target.files&&e.target.files[0]; if(!f)return;
+    say(`Loading <em>${f.name.replace(/[<>&]/g,'')}</em>…`);
+    // Stop live scanning while a potentially large photo is decoded. On iOS,
+    // createImageBitmap also applies the photo's EXIF orientation reliably.
+    stop();
+    if(previewUrl)URL.revokeObjectURL(previewUrl);
+    previewUrl=URL.createObjectURL(f);
+    scan.classList.remove('whole-mode');scan.classList.add('photo-mode');
+    preview.src=previewUrl;preview.style.display='block';cam.style.display='none';
+    let im=null, objectUrl=null;
+    try{
+      if('createImageBitmap' in window) im=await createImageBitmap(f,{imageOrientation:'from-image'});
+      else{
+        objectUrl=URL.createObjectURL(f);
+        im=await new Promise((resolve,reject)=>{const x=new Image();
+          x.onload=()=>resolve(x);x.onerror=()=>reject(new Error('unsupported image format'));x.src=objectUrl;});
+      }
+      const iw=im.width||im.naturalWidth, ih=im.height||im.naturalHeight;
+      if(!iw||!ih)throw new Error('the image has no readable dimensions');
+      const s=Math.min(1,2400/Math.max(iw,ih));
+      work.width=Math.max(1,Math.round(iw*s)); work.height=Math.max(1,Math.round(ih*s));
+      const g=work.getContext('2d',{willReadFrequently:true});
+      g.drawImage(im,0,0,work.width,work.height);
+      // Yield once so the loading message paints before the scan.
+      await new Promise(resolve=>setTimeout(resolve,0));
+      const result=await scanWholePhoto();
+      const count=Object.keys(shards).length;
+      if(!result.found)say('No QR panels found. Try a sharper, straighter photo with the whole bookmark visible.');
+      else if(!count)say(`Found ${result.found} QR code${result.found===1?'':'s'}, but none contained a valid bookmark panel.`);
+      else if(count<3)say(`Automatically found <em>${count} of 4 panels</em>. Try a higher-resolution or straighter photo of the full bookmark.`);
+      else if(count===4)say('<em>All 4 panels found.</em> Recovering the text…');
+    }catch(err){
+      say('Could not load that photo — '+(err&&err.message?err.message:'unsupported image format')+'.');
+    }finally{
+      if(im&&typeof im.close==='function')im.close();
+      if(objectUrl)URL.revokeObjectURL(objectUrl);
+      e.target.value='';
+    }
+  });
+})();
+
+/* ---------- offline, and staying current ----------
+   The old registration installed a worker and never looked again, so an
+   installed copy could serve a months-old page indefinitely. That is what made
+   a fixed app look broken on the phone while the server had the fix. */
+const BUILD='20260901-1456';
+if('serviceWorker' in navigator && location.protocol==='https:'){
+  addEventListener('load',async()=>{
+    try{
+      const reg=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
+      reg.update();                       // ask on every launch
+      setInterval(()=>reg.update(), 60*60*1000);
+      let reloading=false;
+      navigator.serviceWorker.addEventListener('controllerchange',()=>{
+        if(reloading)return; reloading=true; location.reload();
+      });
+    }catch(e){}
+  });
+}
+// show which build is actually running, so a stale cache is obvious at a glance
+addEventListener('DOMContentLoaded',()=>{
+  const f=document.querySelector('footer');
+  if(f){ const b=document.createElement('div');
+    b.style.cssText='margin-top:10px;opacity:.6';
+    b.textContent='build '+BUILD;
+    f.appendChild(b); }
+});
+</script>
+
+
+</body></html>

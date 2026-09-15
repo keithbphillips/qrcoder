@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Bookmark Strip Code — experimental</title>
+<style>
+:root{--paper:#e8e6de;--ink:#17181c;--hair:#aaa79d;--ok:#08733e;--bad:#a3120f}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.45 system-ui,sans-serif}
+main{max-width:1050px;margin:auto;padding:20px}.eyebrow{text-transform:uppercase;letter-spacing:.16em;font-size:10px}
+h1{margin:.15em 0;font-size:clamp(28px,6vw,48px);text-transform:uppercase}p{max-width:70ch}
+.grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:22px;margin-top:20px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}}section{border-top:2px solid;padding-top:12px}
+textarea{width:100%;min-height:210px;padding:10px;background:#f8f7f2;border:1px solid var(--hair);font:12px/1.5 monospace}
+button,.file{display:inline-block;margin:10px 7px 10px 0;padding:10px 13px;border:1px solid var(--ink);background:var(--ink);color:white;
+ font:600 11px monospace;text-transform:uppercase;letter-spacing:.08em;cursor:pointer}.file input{display:none}
+.ghost{background:transparent;color:var(--ink)}.status{padding:9px;border:1px solid var(--hair);font:12px monospace}.ok{color:var(--ok);border-color:var(--ok)}.bad{color:var(--bad);border-color:var(--bad)}
+.codewrap{text-align:center;background:#fff;padding:12px;overflow:auto}#code{width:2.6in;height:auto;image-rendering:pixelated}
+#preview{display:none;width:100%;max-height:70vh;object-fit:contain;background:#222;margin:8px 0}.result{white-space:pre-wrap;background:#f8f7f2;padding:10px;max-height:300px;overflow:auto}
+small{display:block;color:#5f5d56;margin:6px 0}@media print{body{background:#fff}body>*{display:none}main,.grid,.grid section:first-child,.codewrap{display:block!important}section>*:not(.codewrap){display:none!important}.codewrap{padding:0}#code{width:2.6in}}
+</style></head><body><main>
+<div class="eyebrow">Experimental format · not compatible with QR readers</div>
+<h1>Bookmark Strip Code</h1>
+<p>This prototype encodes one compressed payload into a bookmark-shaped high-capacity grid. Four fiducials register the card, then the decoder corrects perspective and damaged cells.</p>
+<div class="grid">
+ <section><h2>1. Generate</h2>
+  <textarea id="text" placeholder="Loading the current Time Machine sample…"></textarea>
+  <button id="generate">Generate strip</button><button class="ghost" id="print">Print</button><button class="ghost" id="download">Download PNG</button>
+  <div id="genstatus" class="status">Loading sample…</div>
+  <div class="codewrap"><canvas id="code"></canvas></div>
+ </section>
+ <section><h2>2. Photograph and decode</h2>
+  <p>Print the strip. Photograph it straight-on in bright, even light, filling the frame with the complete strip and leaving only a small margin.</p>
+  <label class="file">Photograph strip<input id="photo" type="file" accept="image/*" capture="environment"></label>
+  <label class="file ghost">Choose existing photo<input id="existing" type="file" accept="image/*"></label>
+  <div id="scanstatus" class="status">Waiting for a photograph.</div>
+  <img id="preview" alt="Centered strip crop">
+  <div id="result" class="result" hidden></div>
+ </section>
+</div></main>
+<script src="./strip-code.js?v=2"></script><script>
+'use strict';
+const $=id=>document.getElementById(id),Strip=BookmarkStripCode;
+let encoded=null;
+async function deflate(str){const cs=new CompressionStream('deflate-raw'),w=cs.writable.getWriter();w.write(new TextEncoder().encode(str));w.close();return new Uint8Array(await new Response(cs.readable).arrayBuffer());}
+async function inflate(buf){const ds=new DecompressionStream('deflate-raw'),w=ds.writable.getWriter();w.write(buf);w.close();return new TextDecoder().decode(await new Response(ds.readable).arrayBuffer());}
+async function generate(){
+ const payload=await deflate(JSON.stringify({v:1,t:'Experimental Bookmark',x:$('text').value}));
+ try{encoded=Strip.encode(payload);Strip.renderToCanvas($('code'),encoded,12);$('genstatus').className='status ok';$('genstatus').textContent=`READY · ${payload.length} / ${Strip.MAX_PAYLOAD} compressed bytes · ${Strip.COLS} × ${Strip.ROWS} cells`;}
+ catch(e){$('genstatus').className='status bad';$('genstatus').textContent=e.message;}
+}
+async function loadSample(){
+ try{const html=await fetch('./index.html',{cache:'no-store'}).then(r=>r.text()),m=html.match(/\$\('txt'\)\.value=`([\s\S]*?)`;/);$('text').value=m?m[1]:'Paste an excerpt here.';}
+ catch(e){$('text').value='Paste an excerpt here.';}await generate();
+}
+async function scanFile(file){
+ const status=$('scanstatus');status.className='status';status.textContent='Loading high-resolution still…';$('result').hidden=true;
+ let image=null,url='';
+ try{
+  image='createImageBitmap'in window?await createImageBitmap(file,{imageOrientation:'from-image'}):await new Promise((resolve,reject)=>{const im=new Image();url=URL.createObjectURL(file);im.onload=()=>resolve(im);im.onerror=reject;im.src=url;});
+  const iw=image.width||image.naturalWidth,ih=image.height||image.naturalHeight,
+        ratio=(Strip.COLS+4)/(Strip.ROWS+4);
+  const cropH=Math.min(ih*.96,iw*.96/ratio),cropW=cropH*ratio,cropX=(iw-cropW)/2,cropY=(ih-cropH)/2;
+  const scale=Math.min(1,3600/cropH),cv=document.createElement('canvas');cv.width=Math.round(cropW*scale);cv.height=Math.round(cropH*scale);
+  const g=cv.getContext('2d',{willReadFrequently:true});g.drawImage(image,cropX,cropY,cropW,cropH,0,0,cv.width,cv.height);
+  $('preview').src=cv.toDataURL('image/jpeg',.94);$('preview').style.display='block';
+  status.textContent='Locating fiducials and correcting perspective…';await new Promise(r=>setTimeout(r,30));
+  const decoded=Strip.decodeImageData(g.getImageData(0,0,cv.width,cv.height));
+  const obj=JSON.parse(await inflate(decoded.payload));status.className='status ok';status.textContent=`RECOVERED · corrected ${decoded.correctedBytes} damaged bytes · fiducials ${decoded.fiducials.map(f=>(100-f.score*100).toFixed(0)+'%').join(' / ')}`;
+  $('result').hidden=false;$('result').textContent=obj.x||JSON.stringify(obj,null,2);
+ }catch(e){status.className='status bad';status.textContent='DECODE FAILED · '+(e.message||e);}
+ finally{if(image&&image.close)image.close();if(url)URL.revokeObjectURL(url);}
+}
+$('generate').onclick=generate;$('print').onclick=()=>print();$('download').onclick=()=>{const a=document.createElement('a');a.href=$('code').toDataURL('image/png');a.download='bookmark-strip-experimental.png';a.click();};
+for(const id of ['photo','existing'])$(id).onchange=e=>{const f=e.target.files&&e.target.files[0];if(f)scanFile(f);e.target.value='';};
+loadSample();
+</script></body></html>

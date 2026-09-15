@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Print Calibration — how small can your printer go?</title>
+<link rel="stylesheet" href="./fonts.css">
+<style>
+:root{--stock:#E8E6DE;--ink:#17181C;--hair:#C3C0B6;--slug:#6E6C64;--ok:#046b34;--bad:#a3120f}
+*{box-sizing:border-box}
+body{margin:0;background:var(--stock);color:var(--ink);
+ font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:15px;line-height:1.5}
+.sheet{max-width:1100px;margin:0 auto;padding:20px 18px 50px}
+header{border-bottom:2px solid var(--ink);padding-bottom:10px}
+.eyebrow{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.18em;
+ text-transform:uppercase;color:var(--slug)}
+h1{font-family:"Oswald",sans-serif;font-weight:500;letter-spacing:.03em;text-transform:uppercase;
+ font-size:clamp(26px,6vw,44px);line-height:.95;margin:6px 0 2px}
+.dek{max-width:66ch;margin:8px 0 0;font-size:14.5px;color:#2c2d33}
+ol{max-width:66ch;font-size:14.5px}
+ol b{font-family:"IBM Plex Mono",monospace;font-size:13px}
+.grid{margin-top:22px}
+.prow{display:flex;gap:.18in;justify-content:center;margin-bottom:.18in}
+@media(max-width:620px){.prow{flex-direction:column;align-items:center}}
+.cell{width:2.115in;background:#fff;border:1px solid var(--hair);padding:.06in .06in .04in;
+ page-break-inside:avoid;break-inside:avoid}
+.cell canvas{display:block;width:1.985in;height:1.985in;margin:0 auto;image-rendering:pixelated}
+.cap{font-family:"IBM Plex Mono",monospace;font-size:9.5pt;line-height:1.35;
+ text-align:center;padding-top:.03in;color:var(--ink)}
+.cap b{display:block;font-size:11pt;letter-spacing:.06em}
+.cap span{color:var(--slug);font-size:8.5pt}
+.btnrow{display:flex;gap:9px;margin-top:18px;flex-wrap:wrap}
+.btn{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.1em;
+ text-transform:uppercase;padding:10px 14px;background:var(--ink);color:var(--stock);
+ border:1px solid var(--ink);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink)}
+table{width:100%;border-collapse:collapse;font-family:"IBM Plex Mono",monospace;
+ font-size:11.5px;margin-top:22px;max-width:640px}
+th{text-align:left;font-weight:500;letter-spacing:.14em;font-size:9.5px;text-transform:uppercase;
+ color:var(--slug);padding:0 8px 7px 0;border-bottom:1px solid var(--hair)}
+td{padding:6px 8px 6px 0;border-bottom:1px solid rgba(195,192,182,.5)}
+td.num{text-align:right;font-variant-numeric:tabular-nums}
+footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--hair);
+ font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--slug);line-height:1.7;max-width:80ch}
+footer b{color:var(--ink)}
+@media print{
+  body{background:#fff}
+  .sheet{padding:0;max-width:none}
+  header,.dek,ol,.btnrow,table,footer,.noprint{display:none!important}
+  /* Fixed 2x2 per page. A grid that merely avoids breaking inside a cell will
+     still push a whole row onto the next sheet and cut a panel in half. */
+  .grid{display:block;margin:.2in}
+  .prow{display:flex;gap:.16in;justify-content:center;
+        page-break-inside:avoid;break-inside:avoid}
+  .pbreak{page-break-after:always;break-after:page}
+  .cell{border:1px solid #bbb;margin-bottom:.14in}
+  @page{size:letter portrait;margin:.3in}
+}
+</style>
+</head>
+<body>
+<div class="sheet">
+ <header>
+  <div class="eyebrow">One print · one scan · finds your real limit</div>
+  <h1>Print Calibration</h1>
+  <p class="dek">Eight QR panels, all the same physical size, at descending module sizes.
+   Each says out loud what it is, in plain text, so your phone's ordinary camera reads
+   them with no app at all. Panels are now sized to <b>the real bookmark panel</b>, and
+   the PDF carries its own geometry so nothing can rescale it. Two sheets, four panels
+   each, so nothing lands on a page boundary.</p>
+ </header>
+
+ <ol class="noprint">
+  <li><b>Use the PDF</b> and print at 100% / "actual size" — never "fit to page".</li>
+  <li>Open the normal camera app and point it at each panel, largest modules first.</li>
+  <li>Each readable panel shows a line of text naming its version and module size.</li>
+  <li>Note the <b>smallest</b> one that still reads. That is your ceiling.</li>
+  <li>Two sheets print. The second holds the four finest panels.</li>
+ </ol>
+
+ <div class="grid" id="grid"></div>
+
+ <div class="btnrow noprint">
+  <button class="btn" id="pdf">Download exact-size PDF</button>
+  <button class="btn ghost" id="print">Print from browser</button>
+  <button class="btn ghost" id="save">Save as image</button>
+  <a class="btn ghost" href="./" style="text-decoration:none">Back to the bookmark</a>
+ </div>
+
+ <table class="noprint"><thead><tr><th>Panel</th><th style="text-align:right">Module</th>
+  <th style="text-align:right">Words a bookmark could hold</th></tr></thead>
+  <tbody id="spec"></tbody></table>
+
+ <footer class="noprint">
+  <b>Earlier prints of this sheet were oversized.</b> The page drew 2.20 in panels while
+  computing every label for a 1.985 in bookmark panel, so a browser print came out 10.8%
+  large and each label understated the real module by the same margin: a panel labelled
+  0.379 mm actually printed at 0.420 mm. Screen, print and PDF now all use 1.985 in, so a
+  label finally means what it says. If you tested before this note, re-test — your true
+  limit is coarser than the old labels suggested.<br>
+  <b>Why a PDF.</b> Browser printing rescales silently, and a few percent of scale is the
+  difference between a module that reads and one that does not. The PDF states its own
+  geometry in points, so what you measure is what reaches the paper. The codes are vector
+  rectangles, not an image, so they stay sharp at any zoom.
+ </footer>
+</div>
+
+<script src="./qrcode.js"></script>
+<script>
+"use strict";
+const QRC=window.QRCodeLib;
+/* Panel size taken from the same layout the bookmark export uses, so a module
+   measured here is the module that reaches a real card. The sheet previously
+   used a flat 2.20 in, which was 10.8% oversized and made every label optimistic. */
+function bookmarkPanelIn(){
+  const DPI=400, IN=v=>Math.round(v*DPI);
+  const W=IN(2.60),H=IN(9.30),pad=IN(0.16),innerW=W-pad*2;
+  let y=pad;
+  y+=IN(0.13); y+=IN(0.01); y+=IN(0.06); y+=IN(0.045); y+=IN(0.04);
+  y+=IN(0.058)*2; y+=IN(0.04);
+  const footH=IN(0.20), gap=IN(0.04);
+  const avail=H-pad-footH-y-gap*3;
+  return (Math.min(innerW, Math.floor(avail/4)-IN(0.07)))/DPI;
+}
+const PANEL_IN=bookmarkPanelIn(), QUIET=4, BPW=2.394, META=140;
+const QCAP_M=[14,26,42,62,84,106,122,152,180,213,251,287,331,362,412,450,504,560,624,666,
+ 711,779,857,911,997,1059,1125,1190,1264,1370,1452,1538,1628,1722,1809,1911,1989,2099,2213,2331];
+const VERSIONS=[13,15,17,19,21,23,25,27];
+
+function moduleMM(v){ return PANEL_IN*25.4/(17+4*v+QUIET*2); }
+function wordsFor(v){ return Math.max(0,Math.round(((QCAP_M[v-1]-7)*3-META)/BPW)); }
+
+function draw(cv,m,cellPx){
+  const n=m.size, px=(n+QUIET*2)*cellPx;
+  cv.width=px; cv.height=px;
+  const g=cv.getContext('2d');
+  g.fillStyle='#fff'; g.fillRect(0,0,px,px);
+  g.fillStyle='#000';
+  for(let r=0;r<n;r++)for(let c=0;c<n;c++)
+    if(m.data[r*n+c]) g.fillRect((c+QUIET)*cellPx,(r+QUIET)*cellPx,cellPx,cellPx);
+}
+
+const grid=document.getElementById('grid'), spec=document.getElementById('spec');
+const rows=[];
+for(const v of VERSIONS){
+  const mm=moduleMM(v), w=wordsFor(v);
+  // Plain text, so the stock camera app can read it and show the label back.
+  const text=`READS OK — v${v} — ${mm.toFixed(3)}mm modules — a bookmark at this density `+
+             `holds about ${w} words. If you can read this, your printer handles ${mm.toFixed(3)}mm.`;
+  let m=null, err=null;
+  try{ m=QRC.create(text,{version:v,errorCorrectionLevel:'M'}).modules; }
+  catch(e){ err=e.message; }
+
+  const cell=document.createElement('div'); cell.className='cell';
+  const cv=document.createElement('canvas'); cell.appendChild(cv);
+  const cap=document.createElement('div'); cap.className='cap';
+  cap.innerHTML=`<b>${mm.toFixed(3)} mm</b>v${v} · ${17+4*v} modules<br>`+
+                `<span>≈ ${w} words on a bookmark</span>`;
+  cell.appendChild(cap);
+  // two cells per print row, two rows per page
+  const idx=rows.length, rowIdx=Math.floor(idx/2);
+  let prow=grid.querySelector(`.prow[data-r="${rowIdx}"]`);
+  if(!prow){
+    prow=document.createElement('div'); prow.className='prow'; prow.dataset.r=rowIdx;
+    if(rowIdx>0 && rowIdx%2===0){ const prev=grid.querySelector(`.prow[data-r="${rowIdx-1}"]`); if(prev) prev.classList.add('pbreak'); }
+    grid.appendChild(prow);
+  }
+  prow.appendChild(cell);
+  // 10 device px per module keeps the printed edges crisp
+  if(m) draw(cv,m,10); else cap.innerHTML='<b>error</b>'+err;
+  rows.push({v,mm,w,m});
+}
+spec.innerHTML=rows.map(r=>
+  `<tr><td>v${r.v} · ${17+4*r.v} modules</td><td class="num">${r.mm.toFixed(2)} mm</td>`+
+  `<td class="num">${r.w}</td></tr>`).join('');
+
+
+/* ---------------- exact-size PDF ----------------
+   Browser printing silently rescales; a PDF carries its own geometry, so a
+   module measured here is the module that reaches the paper. QR cells are
+   emitted as vector rectangles (runs merged), which stay razor sharp at any
+   zoom and keep the file small. */
+function pdfEscape(t){return String(t).replace(/([\\()])/g,'\\$1');}
+function buildPDF(panels,opts){
+  const PT=72, PW=8.5*PT, PH=11*PT;
+  const panelPt=opts.panelIn*PT, quiet=4;
+  const cols=2, gapPt=0.22*PT, capPt=0.42*PT;
+  const cellW=panelPt, cellH=panelPt+capPt;
+  const perPage=4;
+  const marginX=(PW-(cols*cellW+gapPt))/2;
+  const pages=[];
+  for(let i=0;i<panels.length;i+=perPage) pages.push(panels.slice(i,i+perPage));
+
+  const objs=[]; const add=o=>{objs.push(o);return objs.length;};
+  const kids=[];
+  const contentIds=[];
+  const fontId=null;
+  // reserve: 1 catalog, 2 pages, then per page: page obj + content obj, then font
+  const pageObjIds=[], contentObjIds=[];
+  let nextId=3;
+  for(let p=0;p<pages.length;p++){ pageObjIds.push(nextId++); contentObjIds.push(nextId++); }
+  const FONT_ID=nextId++;
+
+  const streams=pages.map((group,pi)=>{
+    let s='0 0 0 rg\n';
+    const topY=PH-0.55*PT;
+    group.forEach((pan,k)=>{
+      const cx=marginX+(k%cols)*(cellW+gapPt);
+      const cyTop=topY-Math.floor(k/cols)*(cellH+gapPt);
+      const yBottom=cyTop-panelPt;
+      const n=pan.size, unit=panelPt/(n+quiet*2);
+      // white quiet zone is implicit (paper); draw only dark modules,
+      // merging horizontal runs into single rectangles
+      for(let r=0;r<n;r++){
+        let run=0;
+        for(let c=0;c<=n;c++){
+          const dark = c<n && pan.data[r*n+c];
+          if(dark){run++;continue;}
+          if(run){
+            const x=cx+(c-run+quiet)*unit;
+            const y=yBottom+panelPt-(r+quiet+1)*unit;
+            // bleed to avoid hairline seams between abutting fills
+            const bl=unit*0.01;
+            s+=`${(x-bl).toFixed(3)} ${(y-bl).toFixed(3)} ${(unit*run+bl*2).toFixed(3)} ${(unit+bl*2).toFixed(3)} re\n`;
+            run=0;
+          }
+        }
+      }
+      s+='f\n';
+      s+='BT /F1 10 Tf 0 0 0 rg 1 0 0 1 '+(cx).toFixed(2)+' '+(yBottom-13).toFixed(2)+' Tm ('+
+         pdfEscape(pan.line1)+') Tj ET\n';
+      s+='BT /F1 7.5 Tf 0.35 0.35 0.33 rg 1 0 0 1 '+(cx).toFixed(2)+' '+(yBottom-24).toFixed(2)+' Tm ('+
+         pdfEscape(pan.line2)+') Tj ET\n';
+      s+='0 0 0 rg\n';
+    });
+    s+='BT /F1 7 Tf 0.4 0.4 0.4 rg 1 0 0 1 '+marginX.toFixed(2)+' 26 Tm ('+
+       pdfEscape(`Print at 100% — no scaling. Panels are ${opts.panelIn.toFixed(3)} in, the true bookmark panel size. Sheet ${pi+1} of ${pages.length}.`)+
+       ') Tj ET\n';
+    return s;
+  });
+
+  let out='%PDF-1.4\n';
+  const offsets=[0];
+  const push=(id,body)=>{offsets[id]=out.length;out+=`${id} 0 obj\n${body}\nendobj\n`;};
+  push(1,`<</Type/Catalog/Pages 2 0 R>>`);
+  push(2,`<</Type/Pages/Kids[${pageObjIds.map(i=>i+' 0 R').join(' ')}]/Count ${pageObjIds.length}>>`);
+  pageObjIds.forEach((pid,i)=>{
+    push(pid,`<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${PW} ${PH}]/Contents ${contentObjIds[i]} 0 R`+
+             `/Resources<</Font<</F1 ${FONT_ID} 0 R>>>>>>`);
+    push(contentObjIds[i],`<</Length ${streams[i].length}>>\nstream\n${streams[i]}endstream`);
+  });
+  push(FONT_ID,`<</Type/Font/Subtype/Type1/BaseFont/Helvetica/Encoding/WinAnsiEncoding>>`);
+  const xrefPos=out.length;
+  const count=FONT_ID+1;
+  out+=`xref\n0 ${count}\n0000000000 65535 f \n`;
+  for(let i=1;i<count;i++)
+    out+=String(offsets[i]||0).padStart(10,'0')+' 00000 n \n';
+  out+=`trailer\n<</Size ${count}/Root 1 0 R>>\nstartxref\n${xrefPos}\n%%EOF\n`;
+  return out;
+}
+
+document.getElementById('pdf').addEventListener('click',()=>{
+  const panels=rows.filter(r=>r.m).map(r=>({
+    size:r.m.size, data:r.m.data,
+    line1:`${r.mm.toFixed(3)} mm modules`,
+    line2:`v${r.v} · ${17+4*r.v} modules · about ${r.w} words on a bookmark`
+  }));
+  const pdf=buildPDF(panels,{panelIn:PANEL_IN});
+  const bytes=new Uint8Array(pdf.length);
+  for(let i=0;i<pdf.length;i++) bytes[i]=pdf.charCodeAt(i)&255;
+  const blob=new Blob([bytes],{type:'application/pdf'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download='calibration-exact-size.pdf';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),6000);
+});
+document.getElementById('print').addEventListener('click',()=>window.print());
+document.getElementById('save').addEventListener('click',async()=>{
+  // stitch the six panels into one tall image for Save to Photos
+  const DPI=400, cw=Math.round(2.35*DPI), pad=Math.round(0.12*DPI);
+  const cols=2, rowsN=Math.ceil(VERSIONS.length/cols);
+  const chH=Math.round(0.46*DPI), cellH=Math.round(2.20*DPI)+chH;
+  const W=cols*cw+pad*(cols+1), H=rowsN*cellH+pad*(rowsN+1);
+  const out=document.createElement('canvas'); out.width=W; out.height=H;
+  const g=out.getContext('2d');
+  g.fillStyle='#fff'; g.fillRect(0,0,W,H);
+  const canvases=[...grid.querySelectorAll('canvas')];
+  canvases.forEach((cv,i)=>{
+    const cx=pad+(i%cols)*(cw+pad), cy=pad+Math.floor(i/cols)*(cellH+pad);
+    const side=Math.round(2.20*DPI);
+    g.imageSmoothingEnabled=false;
+    g.drawImage(cv,cx+Math.round((cw-side)/2),cy,side,side);
+    g.fillStyle='#17181C';
+    g.font=`600 ${Math.round(0.11*DPI)}px "IBM Plex Mono", monospace`;
+    g.textAlign='center';
+    const r=rows[i];
+    g.fillText(`${r.mm.toFixed(2)} mm`, cx+cw/2, cy+side+Math.round(0.15*DPI));
+    g.fillStyle='#6E6C64';
+    g.font=`400 ${Math.round(0.075*DPI)}px "IBM Plex Mono", monospace`;
+    g.fillText(`v${r.v} · ${17+4*r.v} modules · ~${r.w} words`,
+               cx+cw/2, cy+side+Math.round(0.29*DPI));
+    g.textAlign='left';
+  });
+  out.toBlob(async blob=>{
+    if(!blob) return;
+    const file=new File([blob],'calibration.png',{type:'image/png'});
+    if(navigator.canShare&&navigator.canShare({files:[file]})&&navigator.share){
+      try{ await navigator.share({files:[file],title:'Print calibration'}); return; }
+      catch(e){ if(e.name==='AbortError') return; }
+    }
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a'); a.href=url; a.download='calibration.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),5000);
+  },'image/png');
+});
+</script>
+</body>
+</html>
